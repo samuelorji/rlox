@@ -6,6 +6,7 @@ use value::*;
 #[repr(u8)]
 pub enum OpCode {
     OP_CONSTANT,
+    OP_NEGATE,
     OP_RETURN,
 }
 
@@ -17,7 +18,8 @@ impl From<u8> for OpCode{
 
         match x {
             0 => OpCode::OP_CONSTANT,
-            1 => OpCode::OP_RETURN,
+            1 => OpCode::OP_NEGATE,
+            2 => OpCode::OP_RETURN,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -31,8 +33,8 @@ impl OpCode {
 }
 
 pub struct Chunk {
-     code:  Vec<u8>,
-     constants: ValueArray,
+     pub code:  Vec<u8>,
+     pub constants: ValueArray,
     lines : Vec<u32>
 }
 
@@ -74,7 +76,7 @@ impl Chunk {
     }
 
     // returns next instruction index
-    fn disassembleInstruction(chunk : &Chunk, offset : usize) -> usize {
+    pub fn disassembleInstruction(chunk : &Chunk, offset : usize) -> usize {
         print!("{:04} ",offset);
 
         if(offset >0 && chunk.lines[offset] == chunk.lines[offset -1]){
@@ -93,6 +95,9 @@ impl Chunk {
             }
             OpCode::OP_RETURN => {
                 Self::simpleInstruction("OP_RETURN",offset)
+            }
+            OpCode::OP_NEGATE => {
+             Self::simpleInstruction("OP_NEGATE", offset)
             }
             _ => {
                 println!("Unknown opcode {:?}",instruction);
@@ -116,7 +121,7 @@ impl Chunk {
         // get the value in the value array at constant index
         let value = chunk.constants.values[constantIndex as usize];
         printValue(value);
-        print!("\n");
+        print!("'\n");
         offset + 2 // this should return the location of the next opcode
     }
 
