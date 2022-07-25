@@ -21,7 +21,10 @@ fn main() {
   let interpretResult =   match args.len() {
         1 => repl(),
         2 => runFile(&args[1]),
-        _ => eprintln!("usage rlox [path]\n")
+        _ => {
+            eprintln!("usage rlox [path]\n");
+            InterpretResult::INTERPRET_OK
+        }
     };
 
 
@@ -57,12 +60,22 @@ fn repl()  -> InterpretResult {
         io::stdout().flush().unwrap();
         let mut buffer: String = String::new();
         std::io::stdin().read_line(&mut buffer);
-        interpret(buffer)
+        if (buffer.eq("quit")) {
+            break;
+        } else {
+            match  interpret(buffer) {
+                INTERPRET_OK => {}
+                InterpretResult::INTERPRET_COMPILE_ERROR => {}
+                InterpretResult::INTERPRET_RUNTIME_ERROR => {}
+            }
+        }
     }
+
+    InterpretResult::INTERPRET_OK
 }
 
 fn interpret(line : String) -> InterpretResult {
-    println!("received : {line}")
+    println!("received : {line}");
     INTERPRET_OK
 }
 fn runFile(path : &str) -> InterpretResult {
@@ -70,7 +83,11 @@ fn runFile(path : &str) -> InterpretResult {
        Ok(source) => {
            interpret(source)
        }
-       Err(e) => eprintln!("Could not read file : {:?}",e)
+       Err(e) =>
+           {
+               eprintln!("Could not read file : {:?}", e);
+               std::process::exit(65)
+           }
    }
 }
 
