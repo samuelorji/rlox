@@ -5,24 +5,36 @@ use value::*;
 #[derive(Debug,Clone,Copy)]
 #[repr(u8)]
 pub enum OpCode {
+    OP_RETURN,
     OP_CONSTANT,
     OP_NEGATE,
-    OP_RETURN,
+    OP_ADD,
+    OP_SUBTRACT,
+    OP_DIVIDE,
+    OP_MULTIPLY
+
 }
 
 // NB, this  must match the order above
 
 impl From<u8> for OpCode{
     fn from(x: u8) -> Self {
-
-
         match x {
-            0 => OpCode::OP_CONSTANT,
-            1 => OpCode::OP_NEGATE,
-            2 => OpCode::OP_RETURN,
+            0 => OpCode::OP_RETURN,
+            1 => OpCode::OP_CONSTANT,
+            2 => OpCode::OP_NEGATE,
+            3 => OpCode::OP_ADD,
+            4 => OpCode::OP_SUBTRACT,
+            5 => OpCode::OP_DIVIDE,
+            6 => OpCode::OP_MULTIPLY,
             _ => panic!( "unknown opcode {}", x)
         }
 
+    }
+}
+impl From<OpCode> for u8 {
+    fn from(opcode: OpCode) -> Self {
+       opcode as u8
     }
 }
 
@@ -35,7 +47,7 @@ impl OpCode {
 pub struct Chunk {
      pub code:  Vec<u8>,
      pub constants: ValueArray,
-    lines : Vec<u32>
+     pub lines : Vec<u32>
 }
 
 impl Chunk {
@@ -51,11 +63,9 @@ impl Chunk {
         self.lines.push(line)
     }
     pub fn free(&mut self) -> () {
-        self.code.clear();
-        self.code.resize(0,0);
+        self.code = Vec::new();
         self.constants.free();
-        self.lines.clear();
-        self.lines.resize(0,0);
+        self.lines = Vec::new();
     }
     // return the index where the constant was appended to
     pub fn addConstant(&mut self, constant : Value) -> u32 {
@@ -63,63 +73,70 @@ impl Chunk {
         self.constants.count() - 1
     }
 
+    pub fn readConstant(&self, index : usize) -> Value {
+        self.constants.read_value(index)
+    }
+
+    pub fn read(&self, index : usize) -> u8 {
+        self.code[index]
+    }
+
     pub fn disassemble(&self, chunkName : &str)  {
         print!("== {} ==\n", chunkName);
-
 
         let mut offset  = 0;
         // offset here must end up being a valid opcode else it will panic
         // we want this, cos disassemble instruction must start at an opcode
         while(offset < self.code.len()) {
-            offset = Self::disassembleInstruction(&self, offset);
+            offset = self.disassembleInstruction(offset);
         }
     }
 
     // returns next instruction index
-    pub fn disassembleInstruction(chunk : &Chunk, offset : usize) -> usize {
+    pub fn disassembleInstruction(&self, offset : usize) -> usize {
         print!("{:04} ",offset);
 
-        if(offset >0 && chunk.lines[offset] == chunk.lines[offset -1]){
+        if(offset >0 && self.lines[offset] == self.lines[offset -1]){
             // we're on the same line in the source code
             print!("   | ")
         } else {
-            print!("{:4} ",chunk.lines[offset])
+            print!("{:4} ",self.lines[offset])
         }
 
-        let instruction = chunk.code[offset];
+        let instruction: OpCode = self.code[offset].into();
         // all things being equal, instruction should be an opcode
-        match OpCode::from(instruction) {
+        match instruction {
             OpCode::OP_CONSTANT => {
-                Self::constantInstruction("OP_CONSTANT",chunk,offset)
-
+                self.constantInstruction("OP_CONSTANT",offset)
             }
             OpCode::OP_RETURN => {
-                Self::simpleInstruction("OP_RETURN",offset)
+                self.simpleInstruction("OP_RETURN",offset)
             }
             OpCode::OP_NEGATE => {
-             Self::simpleInstruction("OP_NEGATE", offset)
+                self.simpleInstruction("OP_NEGATE", offset)
             }
-            _ => {
-                println!("Unknown opcode {:?}",instruction);
-                 offset + 1
-            }
+
+            OpCode::OP_ADD => self.simpleInstruction("OP_ADD", offset),
+            OpCode::OP_SUBTRACT => self.simpleInstruction("OP_SUBTRACT", offset),
+            OpCode::OP_DIVIDE => self.simpleInstruction("OP_DIVIDE", offset),
+            OpCode::OP_MULTIPLY => self.simpleInstruction("OP_MULTIPLY", offset),
         }
 
     }
 
-    fn simpleInstruction(instructionName : &str, offset : usize) -> usize {
+    fn simpleInstruction(&self,instructionName : &str, offset : usize) -> usize {
         print!("{}\n", instructionName);
         offset + 1
     }
 
-    fn constantInstruction(name : &str, chunk: &Chunk,offset : usize) -> usize {
+    fn constantInstruction(&self,name : &str, offset : usize) -> usize {
 
         // constant index is the value which represents the index in the values array where the
         // constant for this opcode lives
-        let constantIndex = chunk.code[offset + 1];
-        print!("{:-16} {:4} '", name, constantIndex);
+        let constantIndex = self.code[offset + 1];
+        print!("{name:-16} {constantIndex:4} '");
         // get the value in the value array at constant index
-        let value = chunk.constants.values[constantIndex as usize];
+        let value = self.constants.values[constantIndex as usize];
         printValue(value);
         print!("'\n");
         offset + 2 // this should return the location of the next opcode

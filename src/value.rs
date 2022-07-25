@@ -15,8 +15,9 @@ impl ValueArray {
         }
     }
 
-    pub fn write(&mut self,value : Value) ->(){
+    pub fn write(&mut self,value : Value) -> usize {
         self.values.push(value);
+        self.values.len() - 1
     }
 
     pub fn pop(&mut self) -> Option<Value> {
@@ -24,34 +25,13 @@ impl ValueArray {
     }
 
     pub fn free(&mut self) {
-        self.values.resize(0,0_f32)
+        self.values = Vec::new()
     }
     pub fn count(&self) -> u32 {
         self.values.len() as u32
     }
-
-}
-
-pub struct StackArray{
-    pub values : Vec<Value>
-}
-
-impl StackArray {
-    pub fn new() -> Self {
-        Self{
-            values : vec![]
-        }
-    }
-
-    pub fn push(&mut self, value : Value) {
-        self.values.push(value);
-    }
-
-    pub fn pop(&mut self) -> Value {
-        self.values.pop().unwrap_or_else(|| panic!("popping from an empty stack"))
-    }
-    pub fn free(&mut self) {
-        self.values.resize(0,0_f32)
+    pub fn read_value(&self, index : usize) -> Value {
+     self.values[index]
     }
 
 }

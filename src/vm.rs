@@ -1,4 +1,4 @@
-use crate::{Chunk, OpCode, Value, printValue, ValueArray, StackArray};
+use crate::{Chunk, OpCode, Value, printValue, ValueArray};
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 
 // ip is instruction pointer,
@@ -7,131 +7,105 @@ use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 
 const STACk_SIZE:u32 = 256;
 pub struct VM {
-    pub chunk : Chunk,
     ip: usize, // store as index into array
-    stack: StackArray
+    stack: Vec<Value>
 }
 
 impl VM {
-
-    pub fn debugTraceExecution(&mut self) {
-
-        /**
-         printf("          ");
-        for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
-          printf("[ ");
-          printValue(*slot);
-          printf(" ]");
-        }
-        printf("\n");
-         */
-
-        for slot in &self.stack.values {
-            print!("          ");
-            print!("[ ");
-            printValue(*slot);
-            print!(" ]");
-        }
-        print!("\n");
-
-        Chunk::disassembleInstruction(&self.chunk, &self.chunk.code.len() -1);
-    }
-    // pub fn init() -> Self {
-    //     Self{
-    //         chunk : Chunk::new(),
-    //         ip: 0,
-    //         stack : StackArray::new()
-    //     }
-    // }
-
     fn resetStack(&mut self){
-        self.stack.free()
+        self.stack = Vec::new()
     }
 
-    pub fn free(){
+    pub fn free(&mut self){
+        self.resetStack()
 
     }
 
     pub fn new () -> Self {
        Self {
-           chunk : Chunk::new(),
            ip : 0,
-           stack: StackArray::new()
+           stack: Vec::new()
        }
     }
 
-    pub fn interpret(&mut self) -> InterpretResult {
-
-        let stuff = &self.chunk.code[0] ;
-        self.ip = stuff.clone() as usize;
-
-        self.run()
-
-     //   todo!()
-
-
+    pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
+        self.run(chunk)
     }
 
-    fn run(&mut self) -> InterpretResult{
+    fn run(&mut self, chunk : &Chunk) -> InterpretResult{
         loop {
-            let instruction = self.readByte();
-            match OpCode::from(*instruction) {
+            #[cfg(feature = "debug_trace_execution")]
+                {
+                    for slot in &self.stack {
+                                print!("          ");
+                                print!("[ ");
+                                printValue(*slot);
+                                print!(" ]");
+                            }
+                            print!("\n");
+                    chunk.disassembleInstruction(self.ip);
+                }
+            match self.readByte(chunk) {
                 OpCode::OP_CONSTANT => {
-                    let constant = self.readConstant();
+                    let constant = self.readConstant(chunk);
                     self.stack.push(constant);
-
                 }
                 OpCode::OP_RETURN => {
-                    printValue(self.stack.pop());
+                    printValue(self.stack.pop().unwrap());
                     print!("\n");
                     return InterpretResult::INTERPRET_OK
                 }
                 OpCode::OP_NEGATE => {
-                    let constant = self.stack.pop();
+                    let constant = self.stack.pop().unwrap();
                     self.stack.push(-constant);
                 }
-                x => panic!("not known opcode {:?}",x)
+                OpCode::OP_ADD => self.binaryOp(BinaryOp::ADD),
+                OpCode::OP_SUBTRACT => self.binaryOp(BinaryOp::SUBTRACT),
+                OpCode::OP_DIVIDE => self.binaryOp(BinaryOp::DIVIDE),
+                OpCode::OP_MULTIPLY => self.binaryOp(BinaryOp::MULTIPLY),
             }
         }
+    }
 
-        InterpretResult::INTERPRET_OK
+    fn readByte(&mut self, chunk : &Chunk) -> OpCode {
+        let val : OpCode = chunk.read(self.ip).into();
+        self.ip +=1;
+        val
 
     }
 
-    fn readByte<'a>(&'a mut self) -> &'a u8 {
-        let index = self.readAndIncrementIp();
-        &self.chunk.code[index]
-
+    fn readConstant(&mut self, chunk : &Chunk) -> Value {
+        let indexOfConstant = chunk.read(self.ip);
+        self.ip += 1;
+        chunk.readConstant(indexOfConstant as usize)
     }
 
-    fn readAndIncrementIp(&mut self) -> usize {
-        let index = self.ip;
-        self.ip+=1;
-        index
-    }
+    fn binaryOp(&mut self, binaryOp : BinaryOp) {
+        // we put the first pop to b and second to a
+        // because the left value is put into the stack first before the right,
+        // thus, the right is popped first
+        let b = self.stack.pop().unwrap();
+        let a  = self.stack.pop().unwrap();
+        let result = match binaryOp {
+            BinaryOp::ADD => a + b,
+            BinaryOp::SUBTRACT => a - b,
+            BinaryOp::DIVIDE => a / b,
+            BinaryOp::MULTIPLY => a * b,
+        };
 
-    fn readConstant(&mut self) -> Value {
-        let indexOfConstant = *(self.readByte()) as usize;
-        self.chunk.constants.values[indexOfConstant]
-
+        self.stack.push(result);
     }
 
 }
 
+enum BinaryOp {
+    ADD,
+    SUBTRACT,
+    DIVIDE,
+    MULTIPLY
+}
 pub enum InterpretResult {
     INTERPRET_OK,
     INTERPRET_COMPILE_ERROR,
     INTERPRET_RUNTIME_ERROR
 }
-
-
-// impl VM {
-//
-//
-//
-//     // pub fn readByte(&mut self) -> &u8 {
-//     //     let instruction = self.ip;
-//     //     self.ip = &(self.ip + 1);
-//     //     instruction
-//     // }
-// }
