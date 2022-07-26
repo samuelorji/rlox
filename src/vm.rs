@@ -1,4 +1,4 @@
-use crate::{Chunk, OpCode, Value, printValue, ValueArray};
+use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile};
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 
 // ip is instruction pointer,
@@ -28,10 +28,14 @@ impl VM {
        }
     }
 
-    pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
-        self.run(chunk)
-    }
+    // pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
+    //     self.run(chunk)
+    // }
 
+    pub fn interpret(&mut self, source : Vec<u8>) -> InterpretResult {
+        compile(source);
+        InterpretResult::INTERPRET_OK
+    }
     fn run(&mut self, chunk : &Chunk) -> InterpretResult{
         loop {
             #[cfg(feature = "debug_trace_execution")]
@@ -95,6 +99,7 @@ impl VM {
 
         self.stack.push(result);
     }
+
 
 }
 
