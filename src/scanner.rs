@@ -1,7 +1,9 @@
+use std::fmt::{Debug, Display, Formatter};
+use TokenType::*;
 pub struct Scanner {
-    start :  u32,
-    current: u32,
-    line : u32,
+    start :  usize,
+    current: usize,
+    line : usize,
 }
 
 impl Scanner{
@@ -13,24 +15,112 @@ impl Scanner{
         }
     }
 
-    pub fn scanTokens(&mut self, source : &[u8]) -> Token {
+    pub fn scanTokens<'a>(&mut self, source : &'a [u8]) -> Token<'a> {
         self.start = self.current;
-        Token {
-            tokenType : TokenType::TOKEN_MINUS,
-            start: source[0] as char,
-            length: 43,
-            line : 43
+
+        let c = self.advance(source);
+
+        match  (*c as char) {
+             '('=> return self.makeToken(source,TOKEN_LEFT_PAREN),
+             ')'=> return self.makeToken(source,TOKEN_RIGHT_PAREN),
+             '{'=> return self.makeToken(source,TOKEN_LEFT_BRACE),
+             '}'=> return self.makeToken(source,TOKEN_RIGHT_BRACE),
+             ';'=> return self.makeToken(source,TOKEN_SEMICOLON),
+             ','=> return self.makeToken(source,TOKEN_COMMA),
+             '.'=> return self.makeToken(source,TOKEN_DOT),
+             '-'=> return self.makeToken(source,TOKEN_MINUS),
+             '+'=> return self.makeToken(source,TOKEN_PLUS),
+             '/'=> return self.makeToken(source,TOKEN_SLASH),
+             '*'=> return self.makeToken(source,TOKEN_STAR),
+             '!'=>  {
+                 let tokenType = self.tryToMatch(source,'=',TOKEN_BANG_EQUAL,TOKEN_BANG);
+                 return self.makeToken(source,tokenType)
+             },
+            _ => self.errorToken("error token")
         }
+        // if (self.isAtEnd(source)) {
+        //    return self.makeToken(source,TOKEN_EOF)
+        // }
+        //
+        // return self.errorToken("Unexpected character.");
+
+    }
+
+    pub fn tryToMatch(&mut self, source : &[u8] , expected: char, onMatch : TokenType, onNoMatch : TokenType) -> TokenType {
+       match self.matchChar(source,expected)  {
+            true => onMatch,
+            false => onNoMatch
+        }
+    }
+
+    pub fn matchChar(&mut self, source: &[u8], expected: char) -> bool {
+        if (self.isAtEnd(source)) {
+            return false;
+        }
+        if (source[self.current] != (expected as u8)) {
+            return false;
+        }
+        self.current += 1;
+        return true;
+    }
+
+    fn advance<'a>(&mut self, source : &'a [u8]) -> &'a u8 {
+        self.current+=1;
+        &source[self.current -1]
+
+    }
+
+    fn makeToken<'a>(&self, source : &'a [u8], tokenType: TokenType) -> Token<'a> {
+        Token {
+            tokenType,
+            start: &source[self.start .. self.current],
+            line : self.line
+        }
+    }
+
+    pub fn isAtEnd(&self, source : &[u8]) -> bool {
+        source[self.current] == b'0'
+    }
+
+    pub fn errorToken<'a>(&self, message : &'a str ) -> Token<'a> {
+        Token {
+            tokenType : TOKEN_ERROR,
+            start: message.as_bytes(),
+            line : self.line
+        }
+    }
+
+
+}
+
+ pub struct Token<'a> {
+     tokenType : TokenType,
+     start: &'a [u8],
+     line: usize
+ }
+
+// impl Display for Token {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         let tokenString = format!("Token {{ tokenType: {}, lexeme : {}, line : {}",self.tokenType,self.start,self.line)
+//     }
+// }
+
+impl<'a> Debug for Token<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let lexeme = std::str::from_utf8(self.start).unwrap();
+        let tokenString = format!("Token {{ tokenType: {:?}, lexeme : \"{}\", line : {} }}",self.tokenType,lexeme,self.line);
+        f.write_str(&tokenString)
     }
 }
 
-#[derive(Debug)]
- pub struct Token {
-     tokenType : TokenType,
-     start: char,
-     length: u32,
-     line: u32
- }
+impl <'a> Token<'a> {
+    pub fn length(&self) -> usize {
+        self.start.len()
+    }
+
+
+
+}
 
 #[derive(Debug)]
  enum TokenType {
