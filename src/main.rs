@@ -12,26 +12,22 @@ use compiler::*;
 use value::*;
 use chunk::*;
 use vm::*;
-use crate::InterpretResult::INTERPRET_OK;
+
 
 #[warn(unused_imports)]
 fn main() {
-
     let mut vm = VM::new();
 
-    let args : Vec<String> = std::env::args().collect();
+    let args: Vec<String> = std::env::args().collect();
 
-
-  let (interpretResult,mut vm) =   match args.len() {
-        1 => repl(vm),
-        2 => runFile(&args[1],vm),
+    let interpretResult = match args.len() {
+        1 => repl(&mut vm),
+        2 => runFile(&args[1], &mut vm),
         _ => {
             eprintln!("usage rlox [path]\n");
-            (InterpretResult::INTERPRET_OK,vm)
+            (InterpretResult::INTERPRET_OK)
         }
     };
-
-
 
     vm.free();
 
@@ -58,14 +54,12 @@ fn main() {
 
 }
 
-fn repl(mut vm : VM)  -> (InterpretResult,VM) {
+fn repl(vm : &mut VM)  -> InterpretResult {
     loop {
         print!("> ");
         io::stdout().flush().unwrap();
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer);
-        //std::io::stdin().read(&mut buffer).unwrap();
-        //std::io::stdin().readL(&mut buffer).unwrap();
         if (buffer.eq("quit")) {
             break;
         } else {
@@ -77,15 +71,11 @@ fn repl(mut vm : VM)  -> (InterpretResult,VM) {
         }
     }
 
-    (InterpretResult::INTERPRET_OK,vm)
+    InterpretResult::INTERPRET_OK
 }
 
-fn interpret(source : &[u8]) -> InterpretResult {
-    INTERPRET_OK
-}
-
-fn runFile(path : &str,mut vm : VM) -> (InterpretResult,VM) {
-   let res = match  read_file(path) {
+fn runFile(path : &str,vm : &mut VM) -> InterpretResult {
+   match  read_file(path) {
        Ok(source) => {
            vm.interpret(source)
        }
@@ -94,8 +84,7 @@ fn runFile(path : &str,mut vm : VM) -> (InterpretResult,VM) {
                eprintln!("Could not read file : {:?}", e);
                std::process::exit(65)
            }
-   };
-    (res,vm)
+   }
 }
 
 fn read_file(path : &str) -> io::Result<Vec<u8>> {
@@ -104,6 +93,5 @@ fn read_file(path : &str) -> io::Result<Vec<u8>> {
     let mut source : Vec<u8> = Vec::new();
     reader.read_to_end(&mut source)?;
     source.push('\0' as u8);
-
     Ok(source)
 }
