@@ -1,88 +1,87 @@
 use std::fmt::{Debug, Display, Formatter};
 use TokenType::*;
-pub struct Scanner {
+pub struct Scanner<'a> {
+    source: &'a [u8],
     start :  usize,
     current: usize,
     line : usize,
 }
 
-impl Scanner{
-   pub fn new() -> Self {
+impl<'a> Scanner<'a>{
+   pub fn new(source: &'a [u8] ) -> Scanner {
         Scanner {
+            source,
             start : 0,
             current: 0,
             line: 1
         }
     }
 
-    pub fn scanTokens<'a>(&mut self, source : &'a [u8]) -> Token<'a> {
+    pub fn scanTokens(&mut self) -> Token<'a> {
         self.start = self.current;
 
-        let c = self.advance(source);
+        let c = self.advance();
 
         match  (*c as char) {
-             '('=> return self.makeToken(source,TOKEN_LEFT_PAREN),
-             ')'=> return self.makeToken(source,TOKEN_RIGHT_PAREN),
-             '{'=> return self.makeToken(source,TOKEN_LEFT_BRACE),
-             '}'=> return self.makeToken(source,TOKEN_RIGHT_BRACE),
-             ';'=> return self.makeToken(source,TOKEN_SEMICOLON),
-             ','=> return self.makeToken(source,TOKEN_COMMA),
-             '.'=> return self.makeToken(source,TOKEN_DOT),
-             '-'=> return self.makeToken(source,TOKEN_MINUS),
-             '+'=> return self.makeToken(source,TOKEN_PLUS),
-             '/'=> return self.makeToken(source,TOKEN_SLASH),
-             '*'=> return self.makeToken(source,TOKEN_STAR),
+             '('=> return self.makeToken(TOKEN_LEFT_PAREN),
+             ')'=> return self.makeToken(TOKEN_RIGHT_PAREN),
+             '{'=> return self.makeToken(TOKEN_LEFT_BRACE),
+             '}'=> return self.makeToken(TOKEN_RIGHT_BRACE),
+             ';'=> return self.makeToken(TOKEN_SEMICOLON),
+             ','=> return self.makeToken(TOKEN_COMMA),
+             '.'=> return self.makeToken(TOKEN_DOT),
+             '-'=> return self.makeToken(TOKEN_MINUS),
+             '+'=> return self.makeToken(TOKEN_PLUS),
+             '/'=> return self.makeToken(TOKEN_SLASH),
+             '*'=> return self.makeToken(TOKEN_STAR),
              '!'=>  {
-                 let tokenType = self.tryToMatch(source,'=',TOKEN_BANG_EQUAL,TOKEN_BANG);
-                 return self.makeToken(source,tokenType)
+                 let tokenType = self.tryToMatch('=',TOKEN_BANG_EQUAL,TOKEN_BANG);
+                 return self.makeToken(tokenType)
              },
             _ => self.errorToken("error token")
         }
-        // if (self.isAtEnd(source)) {
-        //    return self.makeToken(source,TOKEN_EOF)
-        // }
-        //
-        // return self.errorToken("Unexpected character.");
-
     }
 
-    pub fn tryToMatch(&mut self, source : &[u8] , expected: char, onMatch : TokenType, onNoMatch : TokenType) -> TokenType {
-       match self.matchChar(source,expected)  {
+    pub fn tryToMatch(&mut self, expected: char, onMatch : TokenType, onNoMatch : TokenType) -> TokenType {
+       match self.matchChar(expected)  {
             true => onMatch,
             false => onNoMatch
         }
     }
 
-    pub fn matchChar(&mut self, source: &[u8], expected: char) -> bool {
-        if (self.isAtEnd(source)) {
+    pub fn matchChar(&mut self, expected: char) -> bool {
+        let current = self.current;
+        if (self.isAtEnd()) {
             return false;
         }
-        if (source[self.current] != (expected as u8)) {
+        if (self.source[current] != (expected as u8)) {
             return false;
         }
         self.current += 1;
         return true;
     }
 
-    fn advance<'a>(&mut self, source : &'a [u8]) -> &'a u8 {
+    fn advance(&mut self) -> &'a u8 {
         self.current+=1;
-        &source[self.current -1]
+        &self.source[self.current -1]
 
     }
 
-    fn makeToken<'a>(&self, source : &'a [u8], tokenType: TokenType) -> Token<'a> {
+    fn makeToken(&self, tokenType: TokenType) -> Token<'a> {
+
         Token {
             tokenType,
-            start: &source[self.start .. self.current],
+            start: &self.source[self.start .. self.current],
             line : self.line
         }
     }
 
-    pub fn isAtEnd(&self, source : &[u8]) -> bool {
-        source[self.current] == b'0'
+    pub fn isAtEnd(&self) -> bool {
+        let current = self.current;
+        self.source[current] == b'0'
     }
 
-    pub fn errorToken<'a>(&self, message : &'a str ) -> Token<'a> {
+    pub fn errorToken(&self, message : &'a str ) -> Token<'a> {
         Token {
             tokenType : TOKEN_ERROR,
             start: message.as_bytes(),
