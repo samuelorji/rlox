@@ -20,25 +20,45 @@ impl<'a> Scanner<'a>{
     pub fn scanTokens(&mut self) -> Token<'a> {
         self.start = self.current;
 
+        self.skipWhiteSpace();
+        if(self.isAtEnd()) {
+            return self.makeToken(EOF)
+        }
+
         let c = self.advance();
 
         match  (*c as char) {
-             '('=> return self.makeToken(TOKEN_LEFT_PAREN),
-             ')'=> return self.makeToken(TOKEN_RIGHT_PAREN),
-             '{'=> return self.makeToken(TOKEN_LEFT_BRACE),
-             '}'=> return self.makeToken(TOKEN_RIGHT_BRACE),
-             ';'=> return self.makeToken(TOKEN_SEMICOLON),
-             ','=> return self.makeToken(TOKEN_COMMA),
-             '.'=> return self.makeToken(TOKEN_DOT),
-             '-'=> return self.makeToken(TOKEN_MINUS),
-             '+'=> return self.makeToken(TOKEN_PLUS),
-             '/'=> return self.makeToken(TOKEN_SLASH),
-             '*'=> return self.makeToken(TOKEN_STAR),
+             '('=> return self.makeToken(LEFT_PAREN),
+             ')'=> return self.makeToken(RIGHT_PAREN),
+             '{'=> return self.makeToken(LEFT_BRACE),
+             '}'=> return self.makeToken(RIGHT_BRACE),
+             ';'=> return self.makeToken(SEMICOLON),
+             ','=> return self.makeToken(COMMA),
+             '.'=> return self.makeToken(DOT),
+             '-'=> return self.makeToken(MINUS),
+             '+'=> return self.makeToken(PLUS),
+             '/'=> return self.makeToken(SLASH),
+             '*'=> return self.makeToken(STAR),
              '!'=>  {
-                 let tokenType = self.tryToMatch('=',TOKEN_BANG_EQUAL,TOKEN_BANG);
+                 let tokenType = self.tryToMatch('=',BANG_EQUAL,BANG);
                  return self.makeToken(tokenType)
              },
-            _ => self.errorToken("error token")
+            '>'=>  {
+                let tokenType = self.tryToMatch('=',GREATER_EQUAL,GREATER);
+                return self.makeToken(tokenType)
+            },
+            '<'=>  {
+                let tokenType = self.tryToMatch('=',LESS_EQUAL,LESS);
+                return self.makeToken(tokenType)
+            },
+            '='=>  {
+                let tokenType = self.tryToMatch('=',EQUAL_EQUAL,EQUAL);
+                return self.makeToken(tokenType)
+            },
+            c => {
+                println!("error token : {}",c as u8);
+                self.errorToken("error token")
+            }
         }
     }
 
@@ -68,7 +88,6 @@ impl<'a> Scanner<'a>{
     }
 
     fn makeToken(&self, tokenType: TokenType) -> Token<'a> {
-
         Token {
             tokenType,
             start: &self.source[self.start .. self.current],
@@ -78,12 +97,45 @@ impl<'a> Scanner<'a>{
 
     pub fn isAtEnd(&self) -> bool {
         let current = self.current;
-        self.source[current] == b'0'
+        self.source[current] == b'\0'
+    }
+
+    pub fn skipWhiteSpace(&mut self) {
+        loop {
+            let peeked = self.peek();
+            match (*peeked as char){
+                ' ' | '\r'  | '\t' =>  {
+                    self.advance();
+                    break
+                },
+                '\n' => {
+                    self.advance();
+                    // we do this not to capture the \n
+                    self.start +=1;
+                    self.line +=1;
+                    break;
+                }
+                _ => {
+
+                    break;
+                }
+            }
+
+        }
+    }
+
+    pub fn skip(&mut self) {
+
+    }
+
+    pub fn peek(&self) -> &u8 {
+        let current = self.current;
+        self.source.get(current).unwrap()
     }
 
     pub fn errorToken(&self, message : &'a str ) -> Token<'a> {
         Token {
-            tokenType : TOKEN_ERROR,
+            tokenType : ERROR,
             start: message.as_bytes(),
             line : self.line
         }
@@ -93,7 +145,7 @@ impl<'a> Scanner<'a>{
 }
 
  pub struct Token<'a> {
-     tokenType : TokenType,
+     pub tokenType : TokenType,
      start: &'a [u8],
      line: usize
  }
@@ -122,26 +174,52 @@ impl <'a> Token<'a> {
 }
 
 #[derive(Debug)]
- enum TokenType {
+ pub enum TokenType {
     // Single-character tokens.
-    TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN,
-    TOKEN_LEFT_BRACE, TOKEN_RIGHT_BRACE,
-    TOKEN_COMMA, TOKEN_DOT, TOKEN_MINUS, TOKEN_PLUS,
-    TOKEN_SEMICOLON, TOKEN_SLASH, TOKEN_STAR,
+    LEFT_PAREN,
+    RIGHT_PAREN,
+    LEFT_BRACE,
+    RIGHT_BRACE,
+    COMMA,
+    DOT,
+    MINUS,
+    PLUS,
+    SEMICOLON,
+    SLASH,
+    STAR,
     // One or two character tokens.
-    TOKEN_BANG, TOKEN_BANG_EQUAL,
-    TOKEN_EQUAL, TOKEN_EQUAL_EQUAL,
-    TOKEN_GREATER, TOKEN_GREATER_EQUAL,
-    TOKEN_LESS, TOKEN_LESS_EQUAL,
+    BANG,
+    BANG_EQUAL,
+    EQUAL,
+    EQUAL_EQUAL,
+    GREATER,
+    GREATER_EQUAL,
+    LESS,
+    LESS_EQUAL,
     // Literals.
-    TOKEN_IDENTIFIER, TOKEN_STRING, TOKEN_NUMBER,
+    IDENTIFIER,
+    STRING,
+    NUMBER,
     // Keywords.
-    TOKEN_AND, TOKEN_CLASS, TOKEN_ELSE, TOKEN_FALSE,
-    TOKEN_FOR, TOKEN_FUN, TOKEN_IF, TOKEN_NIL, TOKEN_OR,
-    TOKEN_PRINT, TOKEN_RETURN, TOKEN_SUPER, TOKEN_THIS,
-    TOKEN_TRUE, TOKEN_VAR, TOKEN_WHILE,
+    AND,
+    CLASS,
+    ELSE,
+    FALSE,
+    FOR,
+    FUN,
+    IF,
+    NIL,
+    OR,
+    PRINT,
+    RETURN,
+    SUPER,
+    THIS,
+    TRUE,
+    VAR,
+    WHILE,
 
-    TOKEN_ERROR, TOKEN_EOF
+    ERROR,
+    EOF
 }
 pub fn initScanner(source : String) {
 
