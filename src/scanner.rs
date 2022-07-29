@@ -1,19 +1,21 @@
 use std::fmt::{Debug, Display, Formatter};
+use std::thread::current;
 use TokenType::*;
+
 pub struct Scanner<'a> {
     source: &'a [u8],
-    start :  usize,
+    start: usize,
     current: usize,
-    line : usize,
+    line: usize,
 }
 
-impl<'a> Scanner<'a>{
-   pub fn new(source: &'a [u8] ) -> Scanner {
+impl<'a> Scanner<'a> {
+    pub fn new(source: &'a [u8]) -> Scanner {
         Scanner {
             source,
-            start : 0,
+            start: 0,
             current: 0,
-            line: 1
+            line: 1,
         }
     }
 
@@ -21,55 +23,83 @@ impl<'a> Scanner<'a>{
         self.start = self.current;
 
         self.skipWhiteSpace();
-        if(self.isAtEnd()) {
-            return self.makeToken(EOF)
+        if (self.isAtEnd()) {
+            return self.makeToken(EOF);
         }
 
         let c = self.advance();
 
-        match  (*c as char) {
-             '('=> return self.makeToken(LEFT_PAREN),
-             ')'=> return self.makeToken(RIGHT_PAREN),
-             '{'=> return self.makeToken(LEFT_BRACE),
-             '}'=> return self.makeToken(RIGHT_BRACE),
-             ';'=> return self.makeToken(SEMICOLON),
-             ','=> return self.makeToken(COMMA),
-             '.'=> return self.makeToken(DOT),
-             '-'=> return self.makeToken(MINUS),
-             '+'=> return self.makeToken(PLUS),
-             '/'=> return self.makeToken(SLASH),
-             '*'=> return self.makeToken(STAR),
-             '!'=>  {
-                 let tokenType = self.tryToMatch('=',BANG_EQUAL,BANG);
-                 return self.makeToken(tokenType)
-             },
-            '>'=>  {
-                let tokenType = self.tryToMatch('=',GREATER_EQUAL,GREATER);
-                return self.makeToken(tokenType)
-            },
-            '<'=>  {
-                let tokenType = self.tryToMatch('=',LESS_EQUAL,LESS);
-                return self.makeToken(tokenType)
-            },
-            '='=>  {
-                let tokenType = self.tryToMatch('=',EQUAL_EQUAL,EQUAL);
-                return self.makeToken(tokenType)
-            },
+        if(self.isDigit(*c)) {
+            return self.number();
+        }
+
+        match (*c as char) {
+            '(' => self.makeToken(LEFT_PAREN),
+            ')' => self.makeToken(RIGHT_PAREN),
+            '{' => self.makeToken(LEFT_BRACE),
+            '}' => self.makeToken(RIGHT_BRACE),
+            ';' => self.makeToken(SEMICOLON),
+            ',' => self.makeToken(COMMA),
+            '.' => self.makeToken(DOT),
+            '-' => self.makeToken(MINUS),
+            '+' => self.makeToken(PLUS),
+            '/' => self.makeToken(SLASH),
+            '*' => self.makeToken(STAR),
+            '"' => self.makeString(),
+            '!' => {
+                let tokenType = self.tryToMatch('=', BANG_EQUAL, BANG);
+                self.makeToken(tokenType)
+            }
+            '>' => {
+                let tokenType = self.tryToMatch('=', GREATER_EQUAL, GREATER);
+                self.makeToken(tokenType)
+            }
+            '<' => {
+                let tokenType = self.tryToMatch('=', LESS_EQUAL, LESS);
+                self.makeToken(tokenType)
+            }
+            '=' => {
+                let tokenType = self.tryToMatch('=', EQUAL_EQUAL, EQUAL);
+                self.makeToken(tokenType)
+            }
             c => {
-                println!("error token : {}",c as u8);
+                println!("error token : {}", c as u8);
                 self.errorToken("error token")
             }
         }
     }
 
-    pub fn tryToMatch(&mut self, expected: char, onMatch : TokenType, onNoMatch : TokenType) -> TokenType {
-       match self.matchChar(expected)  {
+    fn makeString(&mut self) -> Token<'a> {
+        let mut peeked = self.peek();
+        while(*peeked != b'"'){
+            if(*peeked == b'\0'){
+                return self.errorToken("Unterminated sting")
+            }else {
+                if(*peeked == b'\n'){
+                    self.line+=1
+                }
+                self.advance();
+            }
+            peeked = self.peek()
+        }
+
+        // when we reach here, we've encountered the closing quote (terminating part of the string)
+        // and we can move ahead to cover the closing quote
+        self.advance();
+        self.makeToken(TokenType::STRING)
+    }
+    fn tryToMatch(&mut self, expected: char, onMatch: TokenType, onNoMatch: TokenType) -> TokenType {
+        match self.matchChar(expected) {
             true => onMatch,
             false => onNoMatch
         }
     }
 
-    pub fn matchChar(&mut self, expected: char) -> bool {
+    fn isDigit(&mut self, byteValue : u8)-> bool {
+        byteValue >= b'0' && byteValue <= b'9'
+    }
+
+    fn matchChar(&mut self, expected: char) -> bool {
         let current = self.current;
         if (self.isAtEnd()) {
             return false;
@@ -78,77 +108,113 @@ impl<'a> Scanner<'a>{
             return false;
         }
         self.current += 1;
+
         return true;
     }
 
     fn advance(&mut self) -> &'a u8 {
-        self.current+=1;
-        &self.source[self.current -1]
-
+        self.current += 1;
+        &self.source[self.current - 1]
     }
 
     fn makeToken(&self, tokenType: TokenType) -> Token<'a> {
         Token {
             tokenType,
-            start: &self.source[self.start .. self.current],
-            line : self.line
+            start: &self.source[self.start..self.current],
+            line: self.line,
         }
     }
 
-    pub fn isAtEnd(&self) -> bool {
+    fn isAtEnd(&self) -> bool {
         let current = self.current;
         self.source[current] == b'\0'
     }
 
-    pub fn skipWhiteSpace(&mut self) {
+    fn skipWhiteSpace(&mut self) {
+        // we keep loooping to skip white spaces or comments or new lines
         loop {
             let peeked = self.peek();
-            match (*peeked as char){
-                ' ' | '\r'  | '\t' =>  {
+            match (*peeked as char) {
+                ' ' | '\r' | '\t' => {
                     self.advance();
-                    break
-                },
+                }
                 '\n' => {
                     self.advance();
                     // we do this not to capture the \n
-                    self.start +=1;
-                    self.line +=1;
-                    break;
+                    self.start += 1;
+                    self.line += 1;
+                }
+                '/' => {
+                    // if next is / then that's a comment
+                    if (*(self.peekNext()) == b'/') {
+                        // this is a comment
+                        // now scan until you encounter a new line and we're not at the end
+                        // once we encounter a new line, we come out of the while loop
+                        // into the outer loop which then runs again and matches against '\n'
+                        while (!self.isAtEnd() && *(self.peek()) != b'\n') {
+                            self.advance();
+                            self.start += 1;
+                        }
+                    }
                 }
                 _ => {
-
                     break;
                 }
             }
-
         }
     }
 
-    pub fn skip(&mut self) {
+    fn skip(&mut self) {}
 
-    }
-
-    pub fn peek(&self) -> &u8 {
+    fn peek(&self) -> &u8 {
         let current = self.current;
         self.source.get(current).unwrap()
     }
 
-    pub fn errorToken(&self, message : &'a str ) -> Token<'a> {
-        Token {
-            tokenType : ERROR,
-            start: message.as_bytes(),
-            line : self.line
+    fn peekNext(&self) -> &u8 {
+        if (self.isAtEnd()) {
+            &b'\0'
+        } else {
+            let current = self.current;
+            self.source.get(current + 1).unwrap()
         }
     }
 
+    fn errorToken(&self, message: &'a str) -> Token<'a> {
+        Token {
+            tokenType: ERROR,
+            start: message.as_bytes(),
+            line: self.line,
+        }
+    }
+    fn number(&mut self) -> Token<'a> {
+       // let mut peeked = self.peek();
+        while(self.isDigit(*self.peek())){
+            self.advance();
 
+        }
+
+        // we've captured all whole numbers above,
+        // now for fractional parts
+
+        if(*self.peek() == b'.' && self.isDigit(*self.peekNext())){
+            self.advance();
+            while(self.isDigit(*self.peek())){
+                self.advance();
+            }
+        }
+        self.makeToken(TokenType::NUMBER)
+    }
 }
 
- pub struct Token<'a> {
-     pub tokenType : TokenType,
-     start: &'a [u8],
-     line: usize
- }
+#[derive(PartialEq)]
+pub struct Token<'a> {
+    pub tokenType: TokenType,
+    start: &'a [u8],
+    line: usize,
+}
+
+
 
 // impl Display for Token {
 //     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -159,22 +225,30 @@ impl<'a> Scanner<'a>{
 impl<'a> Debug for Token<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let lexeme = std::str::from_utf8(self.start).unwrap();
-        let tokenString = format!("Token {{ tokenType: {:?}, lexeme : \"{}\", line : {} }}",self.tokenType,lexeme,self.line);
+        let tokenString = format!("Token {{ tokenType: {:?}, lexeme : \"{}\", line : {} }}", self.tokenType, lexeme, self.line);
         f.write_str(&tokenString)
     }
 }
 
-impl <'a> Token<'a> {
+impl<'a> Token<'a> {
     pub fn length(&self) -> usize {
         self.start.len()
     }
-
-
-
 }
 
-#[derive(Debug)]
- pub enum TokenType {
+//
+// impl PartialEq for TokenType {
+//     fn eq(&self, other: &Self) -> bool {
+//         self as &u8 == other as &u8
+//     }
+//
+//     fn ne(&self, other: &Self) -> bool {
+//         self as u8 != other as u8
+//     }
+// }
+
+#[derive(Debug,PartialEq,Copy,Clone)]
+pub enum TokenType {
     // Single-character tokens.
     LEFT_PAREN,
     RIGHT_PAREN,
@@ -219,8 +293,66 @@ impl <'a> Token<'a> {
     WHILE,
 
     ERROR,
-    EOF
+    EOF,
 }
-pub fn initScanner(source : String) {
 
+impl TokenType {
+
+    pub fn as_u8(&self) -> u8 {
+        let i = *self as u8;
+        i
+    }
+
+}
+
+pub fn initScanner(source: String) {}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn testParseSourceWithComment(){
+
+        // Explicit tokens used
+        let mut source = String::from( r#"
+!
+//hello
+="#);
+        source.push('\0'); // add null terminating byte
+
+        let mut sourceCode = source.trim().as_bytes();
+
+        let mut scanner = Scanner::new(sourceCode);
+        let mut scannedToken = scanner.scanTokens();
+
+        let bang = Token {
+            tokenType: TokenType::BANG,
+            start: &sourceCode[0..1],
+            line: 1
+        };
+
+        assert_eq!(bang, scannedToken);
+
+        scannedToken = scanner.scanTokens();
+
+        let equalsSign =
+            Token {
+                tokenType: TokenType::EQUAL,
+                start: &sourceCode[10..11],
+                line: 3
+            };
+        assert_eq!(equalsSign, scannedToken);
+
+        // we use start as an empty slice because EOF doesn't capture the null byte
+        // but returns an empty slice instead
+        let eofToken =
+            Token {
+                tokenType: TokenType::EOF,
+                start: &sourceCode[11..11], // could be anything to denote an empty slice 1..1, 2..2
+                line: 3
+            };
+        scannedToken = scanner.scanTokens();
+        assert_eq!(eofToken, scannedToken);
+    }
 }
