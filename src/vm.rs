@@ -33,8 +33,36 @@ impl VM {
     // }
 
     pub fn interpret(&mut self, source : Vec<u8>) -> InterpretResult {
-        compile(source);
-        InterpretResult::INTERPRET_OK
+
+        /**
+         Chunk chunk;
+        initChunk(&chunk);
+
+        if (!compile(source, &chunk)) {
+          freeChunk(&chunk);
+          return INTERPRET_COMPILE_ERROR;
+        }
+
+        vm.chunk = &chunk;
+        vm.ip = vm.chunk->code;
+
+        InterpretResult result = run();
+
+        freeChunk(&chunk);
+        return result;
+
+         */
+
+        let mut chunk  = Chunk::new();
+
+        if(!compile(source,&mut chunk)){
+            chunk.free();
+            InterpretResult::INTERPRET_COMPILE_ERROR
+        } else {
+            let result = self.run(&chunk);
+            chunk.free();
+            result
+        }
     }
     fn run(&mut self, chunk : &Chunk) -> InterpretResult{
         loop {

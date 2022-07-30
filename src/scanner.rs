@@ -19,6 +19,15 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    pub fn empty() -> Scanner<'a> {
+        Scanner {
+            source : &[],
+            start: 0,
+            current: 0,
+            line: 0,
+        }
+    }
+
     pub fn scanTokens(&mut self) -> Token<'a> {
         self.start = self.current;
 
@@ -281,8 +290,8 @@ impl<'a> Scanner<'a> {
 #[derive(PartialEq)]
 pub struct Token<'a> {
     pub tokenType: TokenType,
-    start: &'a [u8],
-    line: usize,
+    pub start: &'a [u8],
+    pub line: usize,
 }
 
 
@@ -303,6 +312,14 @@ impl<'a> Debug for Token<'a> {
 impl<'a> Token<'a> {
     pub fn length(&self) -> usize {
         self.start.len()
+    }
+    
+    pub fn empty() -> Self {
+        Self {
+            tokenType: TokenType::EMPTY,
+            start: &[],
+            line: 0
+        }
     }
 }
 
@@ -364,6 +381,7 @@ pub enum TokenType {
 
     ERROR,
     EOF,
+    EMPTY,
 }
 
 impl TokenType {
