@@ -1,4 +1,4 @@
-use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile};
+use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile,Compiler};
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 
 // ip is instruction pointer,
@@ -53,9 +53,11 @@ impl VM {
 
          */
 
+        let mut compiler = Compiler::new(&source);
+
         let mut chunk  = Chunk::new();
 
-        if(!compile(source,&mut chunk)){
+        if(!compiler.compile(&mut chunk)){
             chunk.free();
             InterpretResult::INTERPRET_COMPILE_ERROR
         } else {

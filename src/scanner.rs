@@ -287,7 +287,7 @@ impl<'a> Scanner<'a> {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq,Copy,Clone)]
 pub struct Token<'a> {
     pub tokenType: TokenType,
     pub start: &'a [u8],

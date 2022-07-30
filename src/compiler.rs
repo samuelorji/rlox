@@ -18,61 +18,60 @@ use crate::Chunk;
 
 
 pub struct Parser<'a> {
-    current : Option<Token<'a>>,
+    current: Option<Token<'a>>,
     previous: Option<Token<'a>>,
-    hadError : bool,
-    panicMode : bool,
+    hadError: bool,
+    panicMode: bool,
 }
 
 impl<'a> Parser<'a> {
     fn new() -> Self {
         Self {
-            current:None,
+            current: None,
             previous: None,
             hadError: false,
-            panicMode : false
+            panicMode: false,
         }
     }
 }
-struct Compiler<'a> {
-    source : Vec<u8>,
-    parser : Parser<'a>,
-    // scanner : Scanner<'a>
+
+pub struct Compiler<'a> {
+    source: &'a [u8],
+    parser: Parser<'a>,
+    scanner: Scanner<'a>,
 }
 
 impl<'a> Compiler<'a> {
     pub fn compile(&mut self, chunk: &mut Chunk) -> bool {
-        //self.setScanner();
-
-        // self.advance();
-        // self.expression();
-        //self.consume(TokenType::EOF, "Expect end of expression.");
+        self.setScanner();
+        self.advance();
+        self.expression();
+        self.consume(TokenType::EOF, "Expect end of expression.");
 
         !self.parser.hadError
     }
 
-    pub fn expression(&mut self) {
+    pub fn expression(&mut self) {}
 
-    }
+    pub fn advance(&mut self) {
 
-    pub fn advance(&mut self, scanner : &mut Scanner<'a>) {
+        // self.parser.current.mut
         let current = self.parser.current.take();
         self.parser.previous = current;
         loop {
-            let scannedToken = scanner.scanTokens();
-            if(scannedToken.tokenType != TokenType::ERROR) {
+            let scannedToken = self.scanner.scanTokens();
+            if (scannedToken.tokenType != TokenType::ERROR) {
                 self.parser.current = Some(scannedToken);
                 break;
             }
-
         }
     }
-    fn errorAtCurrent(&mut self, message : &str) {
+    fn errorAtCurrent(&mut self, message: &str) {
         let currentToken = self.parser.current.take().unwrap();
-        self.errorAt(currentToken,message)
+        self.errorAt(currentToken, message)
     }
 
-    fn errorAt(&mut self, token :Token<'a>, message : &str) {
+    fn errorAt(&mut self, token: Token<'a>, message: &str) {
         ///static void errorAt(Token* token, const char* message) {
         //   fprintf(stderr, "[line %d] Error", token->line);
         //
@@ -88,7 +87,7 @@ impl<'a> Compiler<'a> {
         //   parser.hadError = true;
         // }
 
-        if(self.parser.panicMode) {
+        if (self.parser.panicMode) {
             return;
         }
         self.parser.panicMode = true;
@@ -97,13 +96,12 @@ impl<'a> Compiler<'a> {
         match token.tokenType {
             TokenType::EOF => eprintln!(" at end"),
             TokenType::ERROR => (),
-            _ => eprintln!(" at {}",std::str::from_utf8(token.start).unwrap())
+            _ => eprintln!(" at {}", std::str::from_utf8(token.start).unwrap())
         }
         self.parser.hadError = true;
     }
 
-    fn consume(&mut self,tokenType : TokenType , message : &str) {
-
+    fn consume(&mut self, tokenType: TokenType, message: &str) {
         match &self.parser.current {
             Some(token) => {
                 if (token.tokenType == tokenType) {
@@ -124,22 +122,21 @@ impl<'a> Compiler<'a> {
         // self.errorAtCurrent(message)
     }
 
-    // fn setScanner(&'a mut self) {
-    //     self.scanner = Scanner::new(&self.source)
-    // }
-    pub fn new(sourcer : Vec<u8>) -> Self {
+    fn setScanner(&mut self) {
+        self.scanner = Scanner::new(&self.source)
+    }
+    pub fn new(sourcer: &'a [u8]) -> Self {
         Self {
-            source: sourcer ,
+            source: sourcer,
             parser: Parser::new(),
-            //scanner : Scanner::new(&source),
+            scanner: Scanner::empty(),
 
         }
     }
 }
 
-pub fn compile(source : Vec<u8>, chunk : &mut Chunk) -> bool {
-
-///advance();
+pub fn compile(source: Vec<u8>, chunk: &mut Chunk) -> bool {
+    ///advance();
 //   expression();
 //   consume(TOKEN_EOF, "Expect end of expression.");
 
