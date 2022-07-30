@@ -16,6 +16,12 @@ use vm::*;
 
 #[warn(unused_imports)]
 fn main() {
+
+    let a: &[u8] = b"123";
+    let b: &[u8] = b"12";
+
+    //println!("{}", a==b)
+
     let mut vm = VM::new();
 
     let args: Vec<String> = std::env::args().collect();

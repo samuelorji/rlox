@@ -10,3 +10,10 @@ edition = "2021"
 [features]
 debug_trace_execution = []
 
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "bench_equals"
+harness = false

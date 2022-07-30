@@ -29,7 +29,10 @@ impl<'a> Scanner<'a> {
 
         let c = self.advance();
 
-        if(self.isDigit(*c)) {
+        if (self.isAlpha(*c as char)) {
+            return self.identifier();
+        }
+        if (self.isDigit(*c)) {
             return self.number();
         }
 
@@ -71,12 +74,12 @@ impl<'a> Scanner<'a> {
 
     fn makeString(&mut self) -> Token<'a> {
         let mut peeked = self.peek();
-        while(*peeked != b'"'){
-            if(*peeked == b'\0'){
-                return self.errorToken("Unterminated sting")
-            }else {
-                if(*peeked == b'\n'){
-                    self.line+=1
+        while (*peeked != b'"') {
+            if (*peeked == b'\0') {
+                return self.errorToken("Unterminated sting");
+            } else {
+                if (*peeked == b'\n') {
+                    self.line += 1
                 }
                 self.advance();
             }
@@ -95,7 +98,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn isDigit(&mut self, byteValue : u8)-> bool {
+    fn isDigit(&mut self, byteValue: u8) -> bool {
         byteValue >= b'0' && byteValue <= b'9'
     }
 
@@ -164,6 +167,75 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    fn isAlpha(&self, character: char) -> bool {
+        (character >= 'a' && character <= 'z') ||
+            (character >= 'A' && character <= 'Z') || character == '_'
+    }
+
+    fn identifier(&mut self) -> Token<'a> {
+        while (self.isAlpha(*self.peek() as char) || self.isDigit(*self.peek())) {
+            self.advance();
+        };
+        self.makeToken(self.identifierType())
+    }
+
+    fn identifierType(&self) -> TokenType {
+        match self.source[self.start] as char {
+            'a' => return self.checkKeyword(1, 2, b"nd", AND),
+            'e' => return self.checkKeyword(1, 3, b"lse", ELSE),
+            'c' => return self.checkKeyword(1, 4, b"lass", CLASS),
+            'i' => return self.checkKeyword(1, 1, b"f", IF),
+            'n' => return self.checkKeyword(1, 2, b"il", NIL),
+            'o' => return self.checkKeyword(1, 1, b"r", OR),
+            'p' => return self.checkKeyword(1, 4, b"rint", PRINT),
+            'r' => return self.checkKeyword(1, 5, b"eturn", RETURN),
+            's' => return self.checkKeyword(1, 4, b"uper", SUPER),
+            'v' => return self.checkKeyword(1, 2, b"ar", VAR),
+            'w' => return self.checkKeyword(1, 4, b"hile", WHILE),
+            'f' => {
+                if (self.current - self.start > 1) {
+                    // we've captured more than just f, so f and at least another character
+                    match self.source[self.start + 1] as char {
+                        'o' => return self.checkKeyword(2, 1, b"r", FOR),
+                        'a' => return self.checkKeyword(2, 3, b"lse", FALSE),
+                        'u' => return self.checkKeyword(2, 1, b"n", FUN),
+                        _ => ()
+                    };
+                };
+            }
+            't' => {
+                if (self.current - self.start > 1) {
+                    // we've captured more than just t, so t and at least another character
+                    match self.source[self.start + 1] as char {
+                        'h' => return self.checkKeyword(2, 2, b"is", THIS),
+                        'r' => return self.checkKeyword(2, 2, b"ue", TRUE),
+                        _ => ()
+                    }
+                }
+            }
+            _ => ()
+        };
+        IDENTIFIER
+    }
+
+    fn checkKeyword(&self, start: usize, length: usize, rest: &[u8], tokenType: TokenType) -> TokenType {
+        // check if self.source[self.start + start - start] == rest ,
+        // e.g for else case, check if lse == lse
+        if (self.current - self.start == start + length && &self.source[self.start + start..self.current] == rest) {
+            return tokenType;
+        }
+        IDENTIFIER
+    }
+
+    fn memcmp(&self, a: &[u8], b: &[u8], length: usize) -> bool {
+        if (a.len() != length || b.len() != length) {
+            return false;
+        } else {
+            a == b
+        }
+    }
+
+
     fn skip(&mut self) {}
 
     fn peek(&self) -> &u8 {
@@ -188,18 +260,17 @@ impl<'a> Scanner<'a> {
         }
     }
     fn number(&mut self) -> Token<'a> {
-       // let mut peeked = self.peek();
-        while(self.isDigit(*self.peek())){
+        // let mut peeked = self.peek();
+        while (self.isDigit(*self.peek())) {
             self.advance();
-
         }
 
         // we've captured all whole numbers above,
         // now for fractional parts
 
-        if(*self.peek() == b'.' && self.isDigit(*self.peekNext())){
+        if (*self.peek() == b'.' && self.isDigit(*self.peekNext())) {
             self.advance();
-            while(self.isDigit(*self.peek())){
+            while (self.isDigit(*self.peek())) {
                 self.advance();
             }
         }
@@ -213,7 +284,6 @@ pub struct Token<'a> {
     start: &'a [u8],
     line: usize,
 }
-
 
 
 // impl Display for Token {
@@ -247,7 +317,7 @@ impl<'a> Token<'a> {
 //     }
 // }
 
-#[derive(Debug,PartialEq,Copy,Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TokenType {
     // Single-character tokens.
     LEFT_PAREN,
@@ -297,12 +367,10 @@ pub enum TokenType {
 }
 
 impl TokenType {
-
     pub fn as_u8(&self) -> u8 {
         let i = *self as u8;
         i
     }
-
 }
 
 pub fn initScanner(source: String) {}
@@ -311,11 +379,12 @@ pub fn initScanner(source: String) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
-    fn testParseSourceWithComment(){
+    fn testParseSourceWithComment() {
 
         // Explicit tokens used
-        let mut source = String::from( r#"
+        let mut source = String::from(r#"
 !
 //hello
 ="#);
@@ -329,7 +398,7 @@ mod tests {
         let bang = Token {
             tokenType: TokenType::BANG,
             start: &sourceCode[0..1],
-            line: 1
+            line: 1,
         };
 
         assert_eq!(bang, scannedToken);
@@ -340,7 +409,7 @@ mod tests {
             Token {
                 tokenType: TokenType::EQUAL,
                 start: &sourceCode[10..11],
-                line: 3
+                line: 3,
             };
         assert_eq!(equalsSign, scannedToken);
 
@@ -350,7 +419,7 @@ mod tests {
             Token {
                 tokenType: TokenType::EOF,
                 start: &sourceCode[11..11], // could be anything to denote an empty slice 1..1, 2..2
-                line: 3
+                line: 3,
             };
         scannedToken = scanner.scanTokens();
         assert_eq!(eofToken, scannedToken);
