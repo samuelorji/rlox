@@ -53,22 +53,24 @@ impl VM {
 
          */
 
-        compiled(source);
-        InterpretResult::INTERPRET_OK
+        // compiled(source);
+        // InterpretResult::INTERPRET_OK
 
-        //
-        // let mut compiler = Compiler::new(&source);
-        //
-        // let mut chunk  = Chunk::new();
-        //
-        // if(!compiler.compile(&mut chunk)){
-        //     chunk.free();
-        //     InterpretResult::INTERPRET_COMPILE_ERROR
-        // } else {
-        //     let result = self.run(&chunk);
-        //     chunk.free();
-        //     result
-        // }
+
+
+        let mut chunk  = Chunk::new();
+        let mut compiler = Compiler::new(&source,&mut chunk);
+
+
+
+        if(!compiler.compile()){
+            chunk.free();
+            InterpretResult::INTERPRET_COMPILE_ERROR
+        } else {
+            let result = self.run(&chunk);
+            chunk.free();
+            result
+        }
     }
     fn run(&mut self, chunk : &Chunk) -> InterpretResult{
         loop {

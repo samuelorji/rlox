@@ -43,27 +43,28 @@ pub struct Compiler<'a> {
     source: &'a [u8],
     parser: Parser<'a>,
     scanner: Scanner<'a>,
+    chunk : &'a mut Chunk
 }
 
 impl<'a> Compiler<'a> {
-    pub fn compile(&mut self, chunk: &mut Chunk) -> bool {
+    pub fn compile(&mut self) -> bool {
         self.setScanner();
         self.advance();
         self.expression();
         self.consume(TokenType::EOF, "Expect end of expression.");
 
-        self.end(chunk);
+        self.end();
         !self.parser.hadError
     }
 
-    fn emitByte(&self,byte: u8, chunk : &mut Chunk) {
-        chunk.write(byte,self.parser.previous.unwrap().line)
+    fn emitByte(&mut self,byte: u8) {
+        self.chunk.write(byte,self.parser.previous.unwrap().line)
     }
 
     fn parsePrecedence(&mut self, precedence : Precedence) {
 
     }
-    fn unary(&mut self, chunk : &mut Chunk) {
+    fn unary(&mut self) {
         let operatorType = self.parser.previous.unwrap().tokenType;
 
         self.expression();
@@ -72,14 +73,14 @@ impl<'a> Compiler<'a> {
 
         match operatorType {
             TokenType::MINUS => {
-                self.emitByte(OpCode::OP_NEGATE.to_u8(), chunk)
+                self.emitByte(OpCode::OP_NEGATE.to_u8())
             },
             _ => ()
         }
     }
 
-    pub fn end(&self, chunk : &mut Chunk) {
-        self.emitReturn(chunk)
+    pub fn end(&mut self) {
+        self.emitReturn()
 
     }
     fn grouping(&mut self, chunk : &mut Chunk) {
@@ -87,18 +88,18 @@ impl<'a> Compiler<'a> {
         self.consume(RIGHT_PAREN, "Expect a ')' after a grouping")
     }
 
-    pub fn number(&mut self, chunk : &mut Chunk) {
+    pub fn number(&mut self) {
 
         //f32::from
         let value : Value = f32::from_str(std::str::from_utf8(self.parser.previous.unwrap().start).unwrap()).unwrap();
-        let constantIndex = self.makeConstant(value,chunk);
+        let constantIndex = self.makeConstant(value);
         // write constant and constant index
-        self.emitBytes(chunk,OP_CONSTANT.to_u8(),constantIndex);
+        self.emitBytes(OP_CONSTANT.to_u8(),constantIndex);
 
     }
 
-    pub fn makeConstant(&mut self, value : Value, chunk : &mut Chunk) -> u8 {
-        let constantIndex =  chunk.addConstant(value);
+    pub fn makeConstant(&mut self, value : Value) -> u8 {
+        let constantIndex =  self.chunk.addConstant(value);
         if(constantIndex > u8::MAX as u32) {
             self.error("Too many constants in one chunk.");
              0
@@ -107,14 +108,14 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn emitBytes(&self, chunk : &mut Chunk, byte1 : u8, byte2 : u8) {
-        self.emitByte(byte1,chunk);
-        self.emitByte(byte2,chunk);
+    pub fn emitBytes(&mut self, byte1 : u8, byte2 : u8) {
+        self.emitByte(byte1);
+        self.emitByte(byte2);
     }
 
 
-    pub fn emitReturn(&self, chunk: &mut Chunk) {
-        chunk.write(OP_RETURN.to_u8(),self.parser.previous.unwrap().line)
+    pub fn emitReturn(&mut self) {
+        self.chunk.write(OP_RETURN.to_u8(),self.parser.previous.unwrap().line)
     }
 
     pub fn expression(&mut self) {
@@ -197,11 +198,12 @@ impl<'a> Compiler<'a> {
     fn setScanner(&mut self) {
         self.scanner = Scanner::new(&self.source)
     }
-    pub fn new(sourcer: &'a [u8]) -> Self {
+    pub fn new(sourcer: &'a [u8], chunk : &'a mut Chunk) -> Self {
         Self {
             source: sourcer,
             parser: Parser::new(),
             scanner: Scanner::empty(),
+            chunk
 
         }
     }
