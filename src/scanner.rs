@@ -304,7 +304,7 @@ pub struct Token<'a> {
 impl<'a> Debug for Token<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let lexeme = std::str::from_utf8(self.start).unwrap();
-        let tokenString = format!("Token {{ tokenType: {:?}, lexeme : \"{}\", line : {} }}", self.tokenType, lexeme, self.line);
+        let tokenString = format!("Token {{ tokenType: {:?}, lexeme : \"{}\", line : {} : raw-bytes : {:?} }}", self.tokenType, lexeme, self.line,self.start);
         f.write_str(&tokenString)
     }
 }
