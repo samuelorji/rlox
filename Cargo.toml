@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 
 [features]
+#default = ["debug_trace_execution"]
 debug_trace_execution = []
 
 

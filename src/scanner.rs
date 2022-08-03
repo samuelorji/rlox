@@ -321,6 +321,10 @@ impl<'a> Token<'a> {
             line: 0
         }
     }
+
+    pub fn lexeme(&self) -> &str {
+        std::str::from_utf8(self.start).unwrap()
+    }
 }
 
 //
@@ -337,7 +341,7 @@ impl<'a> Token<'a> {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TokenType {
     // Single-character tokens.
-    LEFT_PAREN,
+    LEFT_PAREN = 0,
     RIGHT_PAREN,
     LEFT_BRACE,
     RIGHT_BRACE,
@@ -381,13 +385,18 @@ pub enum TokenType {
 
     ERROR,
     EOF,
-    EMPTY,
+    EMPTY, // must be last
 }
 
 impl TokenType {
     pub fn as_u8(&self) -> u8 {
-        let i = *self as u8;
-        i
+        *self as u8
+    }
+    pub fn as_usize(&self) -> usize {
+        *self as usize
+    }
+    pub fn elements_len() -> u8 {
+        TokenType::EMPTY.as_u8() + 1
     }
 }
 

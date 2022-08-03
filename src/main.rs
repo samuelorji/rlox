@@ -1,3 +1,5 @@
+extern crate core;
+
 mod chunk;
 mod value;
 mod vm;
@@ -17,10 +19,19 @@ use vm::*;
 #[warn(unused_imports)]
 fn main() {
 
-    let a: &[u8] = b"123";
-    let b: &[u8] = b"12";
-
-    //println!("{}", a==b)
+    // let a: &[u8] = b"123";
+    // let b: &[u8] = b"12";
+    //
+    // //println!("{}", a==b)
+    //
+    // let mut stuff= vec![1,2,3];
+    //
+    // let result = vec![10;20];
+    // print!("{:?}",result);
+    //
+    // stuff[2] = 2;
+    //
+    // println!("vec is {:?}",&stuff);
 
     let mut vm = VM::new();
 
@@ -30,7 +41,7 @@ fn main() {
         1 => repl(&mut vm),
         2 => runFile(&args[1], &mut vm),
         _ => {
-            eprintln!("usage rlox [path]\n");
+            eprintln!("usage rlox [path]\n: {:?}",&args);
             (InterpretResult::INTERPRET_OK)
         }
     };
