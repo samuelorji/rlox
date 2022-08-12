@@ -259,7 +259,7 @@ impl<'a> Compiler<'a> {
     pub fn number(&mut self) {
 
         //f32::from
-        let value : Value = f32::from_str(std::str::from_utf8(self.parser.previous.start).unwrap()).unwrap();
+        let value : Value = Value::number_value(f64::from_str(std::str::from_utf8(self.parser.previous.start).unwrap()).unwrap());
         let constantIndex = self.makeConstant(value);
         // write constant and constant index
         self.emitBytes(OP_CONSTANT.to_u8(),constantIndex);
@@ -335,13 +335,14 @@ impl<'a> Compiler<'a> {
             return;
         }
         self.parser.panicMode = true;
-        eprintln!("[line {}] Error", token.line);
+        eprint!("[line {}] Error", token.line);
 
         match token.tokenType {
-            TokenType::EOF => eprintln!(" at end"),
+            TokenType::EOF => eprint!(" at end"),
             TokenType::ERROR => (),
-            _ => eprintln!(" at {}", std::str::from_utf8(token.start).unwrap())
+            _ => eprint!(" at {}", std::str::from_utf8(token.start).unwrap())
         }
+        eprintln!(": {message}");
         self.parser.hadError = true;
     }
 
@@ -404,7 +405,6 @@ fn unary<'a>(compiler: &mut Compiler<'a>){
 
 fn binary<'a>(compiler: &mut Compiler<'a>){
     let operatorType = compiler.parser.previous.tokenType;
-    println!("operator type is {:?}",&operatorType);
     let parseRule = compiler.getRule(operatorType);
 
     // parse rule here is binary
@@ -427,7 +427,7 @@ fn binary<'a>(compiler: &mut Compiler<'a>){
 
 fn number<'a>(compiler: &mut Compiler<'a>){
     //f32::from
-    let value : Value = f32::from_str(std::str::from_utf8(compiler.parser.previous.start).unwrap()).unwrap();
+    let value : Value = Value::number_value(f64::from_str(std::str::from_utf8(compiler.parser.previous.start).unwrap()).unwrap());
     let constantIndex = compiler.makeConstant(value);
     // write constant and constant index
     compiler.emitBytes(OP_CONSTANT.to_u8(),constantIndex);

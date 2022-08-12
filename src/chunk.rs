@@ -137,12 +137,12 @@ impl Chunk {
         print!("{name:-16} {constantIndex:4} '");
         // get the value in the value array at constant index
         let value = self.constants.values[constantIndex as usize];
-        printValue(value);
+        printValue(&value);
         print!("'\n");
         offset + 2 // this should return the location of the next opcode
     }
 
     fn printValue(value : Value) {
-        print!("{:e}",value)
+        print!("{:?}",value)
     }
 }

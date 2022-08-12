@@ -19,20 +19,6 @@ use vm::*;
 #[warn(unused_imports)]
 fn main() {
 
-    // let a: &[u8] = b"123";
-    // let b: &[u8] = b"12";
-    //
-    // //println!("{}", a==b)
-    //
-    // let mut stuff= vec![1,2,3];
-    //
-    // let result = vec![10;20];
-    // print!("{:?}",result);
-    //
-    // stuff[2] = 2;
-    //
-    // println!("vec is {:?}",&stuff);
-
     let mut vm = VM::new();
 
     let args: Vec<String> = std::env::args().collect();
