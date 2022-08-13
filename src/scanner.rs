@@ -125,6 +125,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> &'a u8 {
+       // self.start+=1;
         self.current += 1;
         &self.source[self.current - 1]
     }
@@ -149,6 +150,7 @@ impl<'a> Scanner<'a> {
             match (*peeked as char) {
                 ' ' | '\r' | '\t' => {
                     self.advance();
+                    self.start += 1;
                 }
                 '\n' => {
                     self.advance();

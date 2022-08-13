@@ -11,7 +11,14 @@ pub enum OpCode {
     OP_ADD,
     OP_SUBTRACT,
     OP_DIVIDE,
-    OP_MULTIPLY
+    OP_MULTIPLY,
+    OP_NIL,
+    OP_TRUE,
+    OP_FALSE,
+    OP_NOT,
+    OP_EQUAL,
+    OP_GREATER,
+    OP_LESS,
 
 }
 
@@ -27,6 +34,13 @@ impl From<u8> for OpCode{
             4 => OpCode::OP_SUBTRACT,
             5 => OpCode::OP_DIVIDE,
             6 => OpCode::OP_MULTIPLY,
+            7 => OpCode::OP_NIL,
+            8 => OpCode::OP_TRUE,
+            9 => OpCode::OP_FALSE,
+            10 => OpCode::OP_NOT,
+            11 => OpCode::OP_EQUAL,
+            12 => OpCode::OP_GREATER,
+            13 => OpCode::OP_LESS,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -120,6 +134,15 @@ impl Chunk {
             OpCode::OP_SUBTRACT => self.simpleInstruction("OP_SUBTRACT", offset),
             OpCode::OP_DIVIDE => self.simpleInstruction("OP_DIVIDE", offset),
             OpCode::OP_MULTIPLY => self.simpleInstruction("OP_MULTIPLY", offset),
+            OpCode::OP_NIL => self.simpleInstruction("OP_NIL", offset),
+            OpCode::OP_TRUE => self.simpleInstruction("OP_TRUE", offset),
+            OpCode::OP_FALSE => self.simpleInstruction("OP_FALSE", offset),
+
+            OpCode::OP_NOT => self.simpleInstruction("OP_NOT", offset),
+
+            OpCode::OP_EQUAL => self.simpleInstruction("OP_EQUAL", offset),
+            OpCode::OP_GREATER => self.simpleInstruction("OP_GREATER", offset),
+            OpCode::OP_LESS => self.simpleInstruction("OP_LESS", offset),
         }
 
     }

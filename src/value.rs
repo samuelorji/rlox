@@ -7,7 +7,12 @@ pub struct ValueArray {
 }
 
 pub fn printValue(value : &Value) {
-    print!("{:?}",&value.rep)
+    match value.valueType {
+        ValueType::VAL_NIL => print!("nil"),
+        _ => print!("{:?}",&value.rep)
+
+    }
+
 }
 
 impl ValueArray {
@@ -44,7 +49,7 @@ struct Number {
     value : f64
 }
 
-#[derive(Debug,Copy, Clone)]
+#[derive(Debug,Copy, Clone,PartialEq)]
 pub enum ValueType {
     VAL_BOOL,
     VAL_NIL,
@@ -73,7 +78,7 @@ impl Debug for As {
 
 #[derive(Debug,Copy, Clone)]
 pub struct Value {
-    valueType : ValueType,
+    pub valueType : ValueType,
     pub rep : As
 }
 

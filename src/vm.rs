@@ -1,5 +1,5 @@
 use std::thread::current;
-use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile, Compiler, compiled, As};
+use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile, Compiler, compiled, As, ValueType};
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 
 // ip is instruction pointer,
@@ -123,14 +123,49 @@ impl VM {
                 OpCode::OP_SUBTRACT => self.binaryOp(BinaryOp::SUBTRACT,chunk),
                 OpCode::OP_DIVIDE => self.binaryOp(BinaryOp::DIVIDE,chunk),
                 OpCode::OP_MULTIPLY => self.binaryOp(BinaryOp::MULTIPLY,chunk),
+                OpCode::OP_NIL => self.stack.push(Value::nil_value()),
+                OpCode::OP_TRUE => self.stack.push(Value::bool_value(true)),
+                OpCode::OP_FALSE => self.stack.push(Value::bool_value(false)),
+                OpCode::OP_NOT => {
+                    let popped = self.pop_stack();
+                    self.stack.push(Value::bool_value(self.isFalsey(&popped)));
+                }
+
+                OpCode::OP_EQUAL => {
+                    let b = self.pop_stack();
+                    let a = self.pop_stack();
+                    let result = self.valuesEqual(&a,&b);
+                    self.stack.push(Value::bool_value(result))
+                }
+                OpCode::OP_GREATER => self.binaryOp(BinaryOp::GREATER,chunk),
+                OpCode::OP_LESS => self.binaryOp(BinaryOp::LESS,chunk),
             }
         }
     }
 
+    fn valuesEqual(&self, a : &Value, b : &Value) -> bool {
+        if(a.valueType != b.valueType) {
+            return false
+        } else {
+            match a.valueType {
+                ValueType::VAL_BOOL => a.as_bool() == b.as_bool(),
+                ValueType::VAL_NIL => true, // a== b , nil == nil
+                ValueType::VAL_NUMBER => a.as_number() == b.as_number()
+            }
+        }
+    }
     fn pop_stack(&mut self) -> Value {
         self.stack.pop().unwrap()
     }
+    fn isFalsey(&self, value: &Value) -> bool {
+        match value.valueType {
+            ValueType::VAL_NIL => true,
+            ValueType::VAL_BOOL =>  !value.as_bool(),
+            _ => true
 
+        }
+      //return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+    }
     fn get_line_number(&self, chunk : &Chunk) -> usize {
         let instruction = chunk.code[self.ip];
          chunk.lines[instruction as usize]
@@ -160,45 +195,25 @@ impl VM {
 
         match (_a,_b) {
             (As::Number(a),As::Number(b)) =>  {
-                let result = match binaryOp {
-                    BinaryOp::ADD => a + b,
-                    BinaryOp::SUBTRACT => a - b,
-                    BinaryOp::DIVIDE => a / b,
-                    BinaryOp::MULTIPLY => a * b,
-                };
+                let result : Result<f64,bool> = match binaryOp { // result not the best thing, but helps keep code DRY
+                    BinaryOp::ADD => Ok(a + b),
+                    BinaryOp::SUBTRACT => Ok(a - b),
+                    BinaryOp::DIVIDE => Ok(a / b),
+                    BinaryOp::MULTIPLY => Ok(a * b),
+                    BinaryOp::GREATER => Err(a > b),
+                    BinaryOp::LESS => Err(a < b),
 
-                self.stack.push(Value::number_value(result));
-            }
+                };
+                match result {
+                    Ok(r) =>  self.stack.push(Value::number_value(r)),
+                    Err(b) =>  self.stack.push(Value::bool_value(b)),
+                }
+
+            },
             _ => {
                 self.runtime_error("",self.get_line_number(chunk))
             }
         }
-
-        // match  (_a.as_number(), _b.as_number()) {
-        //     (Some(a ), Some(b)) => {
-        //         match (a,b) {
-        //             (As::Number(a1), As::Number(b1)) => {
-        //                 let result = match binaryOp {
-        //                     BinaryOp::ADD => a1 + b1,
-        //                     BinaryOp::SUBTRACT => a1 - b1,
-        //                     BinaryOp::DIVIDE => a1 / b1,
-        //                     BinaryOp::MULTIPLY => a1 * b1,
-        //                 };
-        //
-        //                 self.stack.push(Value::number_value(result));
-        //             }
-        //             _ => ()
-        //         }
-        //
-        //
-        //     },
-        //     _ =>  {
-        //         let instruction = chunk.code[self.ip];
-        //         let line  = chunk.lines[instruction as usize];
-        //         self.runtime_error("",line)
-        //     }
-        // }
-
     }
 
     fn runtime_error(&mut self, msg : &str, line : usize) {
@@ -224,11 +239,14 @@ impl VM {
 
 }
 
+#[derive(Debug)]
 enum BinaryOp {
     ADD,
     SUBTRACT,
     DIVIDE,
-    MULTIPLY
+    MULTIPLY,
+    GREATER,
+    LESS
 }
 pub enum InterpretResult {
     INTERPRET_OK,

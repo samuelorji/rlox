@@ -7,6 +7,7 @@ mod compiler;
 mod scanner;
 
 
+use std::borrow::Cow;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -18,7 +19,6 @@ use vm::*;
 
 #[warn(unused_imports)]
 fn main() {
-
     let mut vm = VM::new();
 
     let args: Vec<String> = std::env::args().collect();
