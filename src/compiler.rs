@@ -1,6 +1,9 @@
 use std::str::FromStr;
+use std::alloc;
+use std::alloc::Layout;
 use crate::scanner::*;
 use crate::{Chunk, OpCode, Value};
+use crate::object::Obj;
 use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_NIL, OP_RETURN, OP_TRUE};
 use crate::scanner::TokenType::RIGHT_PAREN;
 
@@ -143,6 +146,7 @@ impl ParseRule {
         rules[TokenType::GREATER_EQUAL.as_usize()] =  createParseRule( None,Some(binary),Precedence::COMPARISON);
         rules[TokenType::LESS.as_usize()] =  createParseRule( None,Some(binary),Precedence::COMPARISON);
         rules[TokenType::LESS_EQUAL.as_usize()] =  createParseRule( None,Some(binary),Precedence::COMPARISON);
+        rules[TokenType::STRING.as_usize()] =  createParseRule( Some(string),None,Precedence::NONE);
 
 
 
@@ -295,6 +299,10 @@ impl<'a> Compiler<'a> {
         self.emitByte(byte2);
     }
 
+    pub fn emitConstant(&mut self, byte : u8) {
+        self.emitBytes(OP_CONSTANT.to_u8(),byte);
+    }
+
 
     pub fn emitReturn(&mut self) {
         self.chunk.write(OP_RETURN.to_u8(),self.parser.previous.line)
@@ -439,12 +447,52 @@ fn binary<'a>(compiler: &mut Compiler<'a>){
 
 }
 
+/**
+static void string() {
+ emitConstant(OBJ_VAL(copyString(parser.previous.start + 1,
+                                 parser.previous.length - 2)));
+}*/
+
+fn string<'a>(compiler: &mut Compiler<'a>) {
+
+    let len = compiler.parser.previous.start.len();
+    let actualString = &compiler.parser.previous.start[1.. len - 1];
+
+    let stuff = Value::obj_value(copy_string(&compiler.parser.previous.start,1, len -1));
+
+    // add constant to constant pool
+    let index = compiler.makeConstant(stuff);
+
+    // emit constant to chunk
+    compiler.emitConstant(index)
+
+  //  compiler.emitBytes()
+
+}
+
+fn copy_string(buffer : &[u8], from : usize, to : usize) -> Obj {
+    let len_of_string = to - from;
+    // allocate memory of that length
+    unsafe  {
+        let layout = Layout::array::<u8>(len_of_string).expect("cannot create layour for string");
+        let ptr = alloc::alloc(layout);
+        let mut ptr_offset : isize = 0;
+        for byte in buffer[from..to].iter() {
+            ptr.offset(ptr_offset).write(*byte);
+            ptr_offset+=1;
+        };
+        Obj::ObjString {
+            length : len_of_string,
+            ptr
+        }
+    }
+}
 fn number<'a>(compiler: &mut Compiler<'a>){
     //println!("{}",std::str::from_utf8(compiler.parser.previous.start).unwrap());
     let value : Value = Value::number_value(f64::from_str(compiler.parser.previous.lexeme()).unwrap());
     let constantIndex = compiler.makeConstant(value);
     // write constant and constant index
-    compiler.emitBytes(OP_CONSTANT.to_u8(),constantIndex);
+    compiler.emitConstant(constantIndex);
 }
 pub fn compile(source: Vec<u8>, chunk: &mut Chunk) -> bool {
     ///advance();

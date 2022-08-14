@@ -1,6 +1,7 @@
 //pub type Value = f32;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
+use crate::object::*;
 
 pub struct ValueArray {
      pub values : Vec<Value>
@@ -8,7 +9,7 @@ pub struct ValueArray {
 
 pub fn printValue(value : &Value) {
     match value.valueType {
-        ValueType::VAL_NIL => print!("nil"),
+        ValueType::NIL => print!("nil"),
         _ => print!("{:?}",&value.rep)
 
     }
@@ -51,14 +52,16 @@ struct Number {
 
 #[derive(Debug,Copy, Clone,PartialEq)]
 pub enum ValueType {
-    VAL_BOOL,
-    VAL_NIL,
-    VAL_NUMBER,
+    BOOL,
+    NIL,
+    NUMBER,
+    OBJ
 }
 #[derive(Copy, Clone)]
 pub enum As {
     Bool(bool),
-    Number(f64)
+    Number(f64),
+    OBJ(Obj)
 }
 
 impl Debug for As {
@@ -71,6 +74,17 @@ impl Debug for As {
             As::Number(r) => {
                 let rep = format!("{}",r);
                 f.write_str(&rep)
+            }
+
+            As::OBJ(obj) => {
+                match obj {
+                    Obj::ObjString {length, ptr } => {
+                        unsafe {
+                            let stuff = std::slice::from_raw_parts(*ptr, *length);
+                            f.write_str(std::str::from_utf8(stuff).unwrap())
+                        }
+                    }
+                }
             }
         }
     }
@@ -86,21 +100,28 @@ impl Value {
 
     pub fn bool_value(value : bool) -> Self {
         Self {
-            valueType: ValueType::VAL_BOOL,
+            valueType: ValueType::BOOL,
             rep : As::Bool(value)
         }
     }
 
     pub fn nil_value() -> Self {
         Self {
-            valueType: ValueType::VAL_NIL,
+            valueType: ValueType::NIL,
             rep: As::Number(0_f64)
         }
     }
     pub fn number_value(number : f64) -> Self {
         Self {
-            valueType: ValueType::VAL_NUMBER,
+            valueType: ValueType::NUMBER,
             rep: As::Number(number)
+        }
+    }
+
+    pub fn obj_value(obj : Obj) -> Self {
+        Self {
+            valueType: ValueType::OBJ,
+            rep: As::OBJ(obj)
         }
     }
 

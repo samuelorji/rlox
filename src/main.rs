@@ -5,6 +5,7 @@ mod value;
 mod vm;
 mod compiler;
 mod scanner;
+mod object;
 
 
 use std::borrow::Cow;
@@ -36,6 +37,8 @@ fn main() {
 
 
 
+
+
     //
     // let mut chunk = Chunk::new();
     //
@@ -63,11 +66,15 @@ fn repl(vm : &mut VM)  -> InterpretResult {
         io::stdout().flush().unwrap();
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer);
-        if (buffer.eq("quit")) {
+
+        if (buffer.trim().eq("quit")) {
             break;
         } else {
+            buffer.push('\0' as char);
             match  vm.interpret(buffer.into_bytes()) {
-                InterpretResult::INTERPRET_OK => {}
+                InterpretResult::INTERPRET_OK => {
+                    vm.free()
+                }
                 InterpretResult::INTERPRET_COMPILE_ERROR => {}
                 InterpretResult::INTERPRET_RUNTIME_ERROR => {}
             }

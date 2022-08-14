@@ -18,6 +18,7 @@ impl VM {
     }
 
     pub fn free(&mut self){
+        self.ip = 0;
         self.resetStack()
 
     }
@@ -148,9 +149,10 @@ impl VM {
             return false
         } else {
             match a.valueType {
-                ValueType::VAL_BOOL => a.as_bool() == b.as_bool(),
-                ValueType::VAL_NIL => true, // a== b , nil == nil
-                ValueType::VAL_NUMBER => a.as_number() == b.as_number()
+                ValueType::BOOL => a.as_bool() == b.as_bool(),
+                ValueType::NIL => true, // a== b , nil == nil
+                ValueType::NUMBER => a.as_number() == b.as_number(),
+                _ => true
             }
         }
     }
@@ -159,8 +161,8 @@ impl VM {
     }
     fn isFalsey(&self, value: &Value) -> bool {
         match value.valueType {
-            ValueType::VAL_NIL => true,
-            ValueType::VAL_BOOL =>  !value.as_bool(),
+            ValueType::NIL => true,
+            ValueType::BOOL =>  !value.as_bool(),
             _ => true
 
         }

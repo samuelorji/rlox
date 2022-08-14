@@ -104,6 +104,7 @@ impl Chunk {
         while(offset < self.code.len()) {
             offset = self.disassembleInstruction(offset);
         }
+        println!("=====    =====");
     }
 
     // returns next instruction index
