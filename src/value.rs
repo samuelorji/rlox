@@ -64,6 +64,16 @@ pub enum As {
     OBJ(Obj)
 }
 
+impl As {
+    pub fn free(self) {
+        match self  {
+            As::OBJ(obj) => {
+                obj.free()
+            },
+            _ => ()
+        }
+    }
+}
 impl Debug for As {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -137,6 +147,14 @@ impl Value {
             p @ As::Number(r) => r,
             x => panic!("{:?} is not a number",x)
         }
+    }
+
+    pub fn free(self) {
+        match  self.valueType {
+            ValueType::OBJ =>  self.rep.free(),
+            _ => ()
+        }
+
     }
 
 }

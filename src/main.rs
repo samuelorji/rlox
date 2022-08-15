@@ -22,6 +22,11 @@ use vm::*;
 fn main() {
     let mut vm = VM::new();
 
+    let a = [1,2,3].as_slice();
+    let b = [5,6,7].as_slice();
+
+    let reesult = [a,b].concat();
+
     let args: Vec<String> = std::env::args().collect();
 
     let interpretResult = match args.len() {
@@ -34,7 +39,6 @@ fn main() {
     };
 
     vm.free();
-
 
 
 

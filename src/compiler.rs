@@ -430,7 +430,7 @@ fn binary<'a>(compiler: &mut Compiler<'a>){
 
     match operatorType {
         TokenType::BANG_EQUAL => compiler.emitBytes(OpCode::OP_EQUAL.to_u8(),OpCode::OP_NOT.to_u8()), // a != b same as !(a==b)
-        TokenType::EQUAL => compiler.emitOpcode(OpCode::OP_EQUAL),
+        TokenType::EQUAL_EQUAL => compiler.emitOpcode(OpCode::OP_EQUAL),
         TokenType::GREATER => compiler.emitOpcode(OpCode::OP_GREATER),
         TokenType::GREATER_EQUAL => compiler.emitBytes(OpCode::OP_LESS.to_u8(),OpCode::OP_NOT.to_u8()), // a >= b same as !(a < b)
         TokenType::LESS => compiler.emitOpcode(OpCode::OP_LESS),
@@ -485,6 +485,43 @@ fn copy_string(buffer : &[u8], from : usize, to : usize) -> Obj {
             length : len_of_string,
             ptr
         }
+    }
+}
+
+// pub fn alloc_new_string(length : usize) -> Obj {
+//     unsafe {
+//         let layout = Layout::array::<u8>(len).expect("cannot create layour for string");
+//         let ptr = alloc::alloc(layout);
+//
+//         Obj::ObjString {
+//             length,
+//             ptr
+//         }
+//
+//     }
+// }
+
+pub unsafe fn concat_strings(str1 : &[u8], str2 : &[u8]) -> Obj {
+    unsafe {
+       let length =  str1.len() + str2.len();
+        let layout = Layout::array::<u8>(length).expect("cannot create layour for string");
+        let ptr = alloc::alloc(layout);
+        let mut ptr_offset = 0;
+
+        for i in str1 {
+            ptr.offset(ptr_offset).write(*i);
+            ptr_offset+=1
+        }
+        for i in str2 {
+            ptr.offset(ptr_offset).write(*i);
+            ptr_offset+=1
+        }
+
+        Obj::ObjString {
+            length,
+            ptr
+        }
+
     }
 }
 fn number<'a>(compiler: &mut Compiler<'a>){

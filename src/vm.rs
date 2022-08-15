@@ -1,5 +1,7 @@
-use std::thread::current;
-use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile, Compiler, compiled, As, ValueType};
+use std::alloc::{alloc, Layout};
+use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile, Compiler, compiled, As, ValueType, concat_strings};
+use crate::object::Obj;
+use std::ptr;
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 
 // ip is instruction pointer,
@@ -9,7 +11,8 @@ use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 const STACk_SIZE:u32 = 256;
 pub struct VM {
     ip: usize, // store as index into array
-    stack: Vec<Value>
+    stack: Vec<Value>,
+    objects : Vec<*mut Obj>
 }
 
 impl VM {
@@ -19,14 +22,20 @@ impl VM {
 
     pub fn free(&mut self){
         self.ip = 0;
-        self.resetStack()
+        for object in &self.objects {
+            println!("object is {:?}", unsafe {
+                let object = **object;
+                object;
+            })
+        }
 
     }
 
     pub fn new () -> Self {
        Self {
            ip : 0,
-           stack: Vec::new()
+           stack: Vec::new(),
+           objects: Vec::new()
        }
     }
 
@@ -94,7 +103,12 @@ impl VM {
                     self.stack.push(constant);
                 }
                 OpCode::OP_RETURN => {
-                    printValue(&self.stack.pop().unwrap());
+                    if(self.stack.is_empty()){
+                        return InterpretResult::INTERPRET_OK
+                    }
+                    let value = self.pop_stack();
+                    printValue(&value);
+                    value.free();
                     print!("\n");
                     return InterpretResult::INTERPRET_OK
                 }
@@ -152,12 +166,42 @@ impl VM {
                 ValueType::BOOL => a.as_bool() == b.as_bool(),
                 ValueType::NIL => true, // a== b , nil == nil
                 ValueType::NUMBER => a.as_number() == b.as_number(),
-                _ => true
+                ValueType::OBJ => {
+                    match (a.rep, b.rep) {
+                        (As::OBJ(objA), (As::OBJ(objB))) => {
+                            match (objA,objB) {
+                                (Obj::ObjString { length, ptr },  Obj::ObjString {length : lengthB,ptr : ptrB}) => {
+                                    unsafe {
+                                        std::slice::from_raw_parts(ptr, length) == std::slice::from_raw_parts(ptrB, lengthB)
+                                    }
+                                },
+                                _ => todo!()
+                            }
+                        },
+                        _ => panic!("other representations should have been handled")
+                    }
+                }
             }
         }
     }
     fn pop_stack(&mut self) -> Value {
-        self.stack.pop().unwrap()
+        let value = self.stack.pop().unwrap();
+        // match value {
+        //     Value {valueType, rep} => {
+        //         match rep {
+        //             As::OBJ(mut p@Obj::ObjString {..}) => {
+        //                 let object_ptr: *mut Obj = &mut p;
+        //                 println!("writing string: {:?}, {:?}",p,object_ptr);
+        //                 self.objects.push(object_ptr);
+        //
+        //             }
+        //             _ => ()
+        //         }
+        //     }
+        //     _ => ()
+        // }
+
+        value
     }
     fn isFalsey(&self, value: &Value) -> bool {
         match value.valueType {
@@ -212,8 +256,34 @@ impl VM {
                 }
 
             },
+            (As::OBJ(first @Obj::ObjString {length, ptr}), As::OBJ(second @Obj::ObjString {length: la, ptr : ptrB})) => {
+                unsafe  {
+                    let str1 = std::slice::from_raw_parts(ptr,length);
+                    let str2 = std::slice::from_raw_parts(ptrB,la);
+                    let result = concat_strings(str1,str2);
+                    self.stack.push(Value::obj_value(result));
+                    first.free();
+                    second.free();
+                }
+            },
+            (As::OBJ(first @Obj::ObjString {length, ptr}), As::Number(a)) => {
+                unsafe  {
+                    let str1 = std::slice::from_raw_parts(ptr,length);
+                    let b =  format!("{}",a);
+                    let result = concat_strings(str1,b.as_bytes());
+                    self.stack.push(Value::obj_value(result));
+                    first.free();
+                }
+            },
+
+            ( As::Number(a),As::OBJ(first @Obj::ObjString {length, ptr})) => {
+                self.runtime_error("Cannot concatenate a number and string",self.get_line_number(chunk));
+                first.free()
+            },
             _ => {
-                self.runtime_error("",self.get_line_number(chunk))
+                self.runtime_error("Operands must be two numbers or two strings",self.get_line_number(chunk));
+                _a.free();
+                _b.free();
             }
         }
     }
@@ -235,7 +305,7 @@ impl VM {
          */
 
         eprintln!("{}",msg);
-        eprintln!("[line {}] in script", line);
+        eprint!("[line {}] in script", line);
         self.resetStack()
     }
 
