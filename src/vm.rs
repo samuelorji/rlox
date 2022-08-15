@@ -1,6 +1,6 @@
 use std::alloc::{alloc, Layout};
-use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile, Compiler, compiled, As, ValueType, concat_strings};
-use crate::object::Obj;
+use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile, Compiler, compiled, As, ValueType};
+use crate::object::*;
 use std::ptr;
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 
@@ -170,7 +170,7 @@ impl VM {
                     match (a.rep, b.rep) {
                         (As::OBJ(objA), (As::OBJ(objB))) => {
                             match (objA,objB) {
-                                (Obj::ObjString { length, ptr },  Obj::ObjString {length : lengthB,ptr : ptrB}) => {
+                                (Obj::STRING(ObjString { length, ptr }),  Obj::STRING(ObjString {length : lengthB,ptr : ptrB})) => {
                                     unsafe {
                                         std::slice::from_raw_parts(ptr, length) == std::slice::from_raw_parts(ptrB, lengthB)
                                     }
@@ -256,27 +256,27 @@ impl VM {
                 }
 
             },
-            (As::OBJ(first @Obj::ObjString {length, ptr}), As::OBJ(second @Obj::ObjString {length: la, ptr : ptrB})) => {
+            (As::OBJ(first @Obj::STRING(ObjString {length, ptr})), As::OBJ(second @Obj::STRING(ObjString {length: la, ptr : ptrB}))) => {
                 unsafe  {
                     let str1 = std::slice::from_raw_parts(ptr,length);
                     let str2 = std::slice::from_raw_parts(ptrB,la);
-                    let result = concat_strings(str1,str2);
-                    self.stack.push(Value::obj_value(result));
+                    let result = ObjString::concat_buffers(str1,str2);
+                    self.stack.push(Value::obj_value(Obj::STRING(result)));
                     first.free();
                     second.free();
                 }
             },
-            (As::OBJ(first @Obj::ObjString {length, ptr}), As::Number(a)) => {
+            (As::OBJ(first @Obj::STRING(ObjString {length, ptr})), As::Number(a)) => {
                 unsafe  {
                     let str1 = std::slice::from_raw_parts(ptr,length);
                     let b =  format!("{}",a);
-                    let result = concat_strings(str1,b.as_bytes());
-                    self.stack.push(Value::obj_value(result));
+                    let result = ObjString::concat_buffers(str1,b.as_bytes());
+                    self.stack.push(Value::obj_value(Obj::STRING(result)));
                     first.free();
                 }
             },
 
-            ( As::Number(a),As::OBJ(first @Obj::ObjString {length, ptr})) => {
+            ( As::Number(a),As::OBJ(first @Obj::STRING(ObjString {length, ptr}))) => {
                 self.runtime_error("Cannot concatenate a number and string",self.get_line_number(chunk));
                 first.free()
             },

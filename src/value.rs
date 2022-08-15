@@ -85,14 +85,10 @@ impl Debug for As {
                 let rep = format!("{}",r);
                 f.write_str(&rep)
             }
-
             As::OBJ(obj) => {
                 match obj {
-                    Obj::ObjString {length, ptr } => {
-                        unsafe {
-                            let stuff = std::slice::from_raw_parts(*ptr, *length);
-                            f.write_str(std::str::from_utf8(stuff).unwrap())
-                        }
+                    Obj::STRING(string @ObjString {.. }) => {
+                        f.write_str(string.as_str())
                     }
                 }
             }
@@ -154,7 +150,5 @@ impl Value {
             ValueType::OBJ =>  self.rep.free(),
             _ => ()
         }
-
     }
-
 }

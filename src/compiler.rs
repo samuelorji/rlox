@@ -3,7 +3,7 @@ use std::alloc;
 use std::alloc::Layout;
 use crate::scanner::*;
 use crate::{Chunk, OpCode, Value};
-use crate::object::Obj;
+use crate::object::{Obj, ObjString};
 use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_NIL, OP_RETURN, OP_TRUE};
 use crate::scanner::TokenType::RIGHT_PAREN;
 
@@ -458,7 +458,7 @@ fn string<'a>(compiler: &mut Compiler<'a>) {
     let len = compiler.parser.previous.start.len();
     let actualString = &compiler.parser.previous.start[1.. len - 1];
 
-    let stuff = Value::obj_value(copy_string(&compiler.parser.previous.start,1, len -1));
+    let stuff = Value::obj_value(Obj::STRING(ObjString::from_buffer(actualString)));
 
     // add constant to constant pool
     let index = compiler.makeConstant(stuff);
@@ -470,38 +470,25 @@ fn string<'a>(compiler: &mut Compiler<'a>) {
 
 }
 
-fn copy_string(buffer : &[u8], from : usize, to : usize) -> Obj {
-    let len_of_string = to - from;
+fn copy_string(buffer : &[u8]) -> ObjString {
+    let len_of_string = buffer.len();
     // allocate memory of that length
     unsafe  {
-        let layout = Layout::array::<u8>(len_of_string).expect("cannot create layour for string");
+        let layout = Layout::array::<u8>(len_of_string).expect("cannot create layout for string");
         let ptr = alloc::alloc(layout);
         let mut ptr_offset : isize = 0;
-        for byte in buffer[from..to].iter() {
+        for byte in buffer.iter() {
             ptr.offset(ptr_offset).write(*byte);
             ptr_offset+=1;
         };
-        Obj::ObjString {
+        ObjString {
             length : len_of_string,
             ptr
         }
     }
 }
 
-// pub fn alloc_new_string(length : usize) -> Obj {
-//     unsafe {
-//         let layout = Layout::array::<u8>(len).expect("cannot create layour for string");
-//         let ptr = alloc::alloc(layout);
-//
-//         Obj::ObjString {
-//             length,
-//             ptr
-//         }
-//
-//     }
-// }
-
-pub unsafe fn concat_strings(str1 : &[u8], str2 : &[u8]) -> Obj {
+pub unsafe fn concat_strings(str1 : &[u8], str2 : &[u8]) -> ObjString {
     unsafe {
        let length =  str1.len() + str2.len();
         let layout = Layout::array::<u8>(length).expect("cannot create layour for string");
@@ -517,7 +504,7 @@ pub unsafe fn concat_strings(str1 : &[u8], str2 : &[u8]) -> Obj {
             ptr_offset+=1
         }
 
-        Obj::ObjString {
+        ObjString {
             length,
             ptr
         }
