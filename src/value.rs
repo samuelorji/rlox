@@ -55,13 +55,15 @@ pub enum ValueType {
     BOOL,
     NIL,
     NUMBER,
-    OBJ
+    OBJ,
+    Empty
 }
 #[derive(Copy, Clone)]
 pub enum As {
     Bool(bool),
     Number(f64),
-    OBJ(Obj)
+    OBJ(Obj),
+    Empty
 }
 
 impl As {
@@ -92,6 +94,8 @@ impl Debug for As {
                     }
                 }
             }
+
+            As::Empty => f.write_str("null")
         }
     }
 }
@@ -142,6 +146,19 @@ impl Value {
         match self.rep {
             p @ As::Number(r) => r,
             x => panic!("{:?} is not a number",x)
+        }
+    }
+    pub fn empty() -> Self {
+        Value {
+            valueType : ValueType::Empty,
+            rep: As::Empty
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match (*self).valueType {
+            ValueType::Empty => true,
+             _ => false
         }
     }
 

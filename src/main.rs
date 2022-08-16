@@ -6,6 +6,10 @@ mod vm;
 mod compiler;
 mod scanner;
 mod object;
+mod table;
+
+use object::*;
+use table::*;
 
 
 use std::borrow::Cow;
@@ -20,12 +24,8 @@ use vm::*;
 
 #[warn(unused_imports)]
 fn main() {
+
     let mut vm = VM::new();
-
-    let a = [1,2,3].as_slice();
-    let b = [5,6,7].as_slice();
-
-    let reesult = [a,b].concat();
 
     let args: Vec<String> = std::env::args().collect();
 

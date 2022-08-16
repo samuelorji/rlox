@@ -483,7 +483,8 @@ fn copy_string(buffer : &[u8]) -> ObjString {
         };
         ObjString {
             length : len_of_string,
-            ptr
+            ptr,
+            hash : 0
         }
     }
 }
@@ -506,7 +507,8 @@ pub unsafe fn concat_strings(str1 : &[u8], str2 : &[u8]) -> ObjString {
 
         ObjString {
             length,
-            ptr
+            ptr,
+            hash: 0
         }
 
     }
