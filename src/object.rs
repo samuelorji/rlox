@@ -55,7 +55,7 @@ impl ObjString {
                 ptr,
                 hash
             };
-            println!("hash is {}, str is {:?}",hash, &stuff.as_str());
+            //println!("hash is {}, str is {:?}",hash, &stuff.as_str());
 
             stuff
         }

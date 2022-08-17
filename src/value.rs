@@ -106,6 +106,42 @@ pub struct Value {
     pub rep : As
 }
 
+impl PartialEq for Value{
+    fn eq(&self, other: &Self) -> bool {
+        let a = self;
+        let b = other;
+        if(a.valueType != b.valueType) {
+            return false
+        } else {
+            match a.valueType {
+                ValueType::BOOL => a.as_bool() == b.as_bool(),
+                ValueType::NIL => true, // a== b , nil == nil
+                ValueType::NUMBER => a.as_number() == b.as_number(),
+                ValueType::OBJ => {
+                    match (a.rep, b.rep) {
+                        (As::OBJ(objA), (As::OBJ(objB))) => {
+                            match (objA,objB) {
+                                (Obj::STRING(first @ObjString { .. }),  Obj::STRING(second @ObjString {..})) => {
+                                    first == second
+                                },
+                                _ => todo!()
+                            }
+                        },
+                        _ => panic!("other representations should have been handled")
+                    }
+                }
+
+                ValueType::Empty =>  true
+            }
+        }
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        !(Value::eq(self, other))
+    }
+
+
+}
 impl Value {
 
     pub fn bool_value(value : bool) -> Self {
@@ -161,6 +197,20 @@ impl Value {
              _ => false
         }
     }
+
+
+    pub fn is_nil(&self) -> bool {
+        match self.valueType {
+            ValueType::NIL =>  {
+              match self.rep   {
+                  As::Number(r) => r == 0f64,
+                 _ => false
+              }
+            },
+            _ => false
+        }
+    }
+
 
     pub fn free(self) {
         match  self.valueType {

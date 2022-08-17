@@ -149,8 +149,10 @@ impl VM {
                 OpCode::OP_EQUAL => {
                     let b = self.pop_stack();
                     let a = self.pop_stack();
-                    let result = self.valuesEqual(&a,&b);
-                    self.stack.push(Value::bool_value(result))
+                    let result = &a == &b;
+                    self.stack.push(Value::bool_value(result));
+                    a.free();
+                    b.free();
                 }
                 OpCode::OP_GREATER => self.binaryOp(BinaryOp::GREATER,chunk),
                 OpCode::OP_LESS => self.binaryOp(BinaryOp::LESS,chunk),
@@ -158,50 +160,34 @@ impl VM {
         }
     }
 
-    fn valuesEqual(&self, a : &Value, b : &Value) -> bool {
-        if(a.valueType != b.valueType) {
-            return false
-        } else {
-            match a.valueType {
-                ValueType::BOOL => a.as_bool() == b.as_bool(),
-                ValueType::NIL => true, // a== b , nil == nil
-                ValueType::NUMBER => a.as_number() == b.as_number(),
-                ValueType::OBJ => {
-                    match (a.rep, b.rep) {
-                        (As::OBJ(objA), (As::OBJ(objB))) => {
-                            match (objA,objB) {
-                                (Obj::STRING(first @ObjString { .. }),  Obj::STRING(second @ObjString {..})) => {
-                                    first == second
-                                },
-                                _ => todo!()
-                            }
-                        },
-                        _ => panic!("other representations should have been handled")
-                    }
-                }
-
-                ValueType::Empty =>  true
-            }
-        }
-    }
+    // fn valuesEqual(&self, a : &Value, b : &Value) -> bool {
+    //     if(a.valueType != b.valueType) {
+    //         return false
+    //     } else {
+    //         match a.valueType {
+    //             ValueType::BOOL => a.as_bool() == b.as_bool(),
+    //             ValueType::NIL => true, // a== b , nil == nil
+    //             ValueType::NUMBER => a.as_number() == b.as_number(),
+    //             ValueType::OBJ => {
+    //                 match (a.rep, b.rep) {
+    //                     (As::OBJ(objA), (As::OBJ(objB))) => {
+    //                         match (objA,objB) {
+    //                             (Obj::STRING(first @ObjString { .. }),  Obj::STRING(second @ObjString {..})) => {
+    //                                 first == second
+    //                             },
+    //                             _ => todo!()
+    //                         }
+    //                     },
+    //                     _ => panic!("other representations should have been handled")
+    //                 }
+    //             }
+    //
+    //             ValueType::Empty =>  true
+    //         }
+    //     }
+    // }
     fn pop_stack(&mut self) -> Value {
-        let value = self.stack.pop().unwrap();
-        // match value {
-        //     Value {valueType, rep} => {
-        //         match rep {
-        //             As::OBJ(mut p@Obj::ObjString {..}) => {
-        //                 let object_ptr: *mut Obj = &mut p;
-        //                 println!("writing string: {:?}, {:?}",p,object_ptr);
-        //                 self.objects.push(object_ptr);
-        //
-        //             }
-        //             _ => ()
-        //         }
-        //     }
-        //     _ => ()
-        // }
-
-        value
+        self.stack.pop().unwrap()
     }
     fn isFalsey(&self, value: &Value) -> bool {
         match value.valueType {
