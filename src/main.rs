@@ -26,30 +26,30 @@ use vm::*;
 fn main() {
 
 
-    let mut map = Table::new();
-
-    // these two collide
-    map.set(ObjString::from_buffer("costarring".as_bytes()),Value::bool_value(true));
-    map.set(ObjString::from_buffer("liquid".as_bytes()),Value::bool_value(true));
-
-    // these collide
-    map.set(ObjString::from_buffer("declinate".as_bytes()),Value::bool_value(true));
-    map.set(ObjString::from_buffer("macallums".as_bytes()),Value::bool_value(true));
-
-    // let mut vm = VM::new();
+    // let mut map = Table::new();
     //
-    // let args: Vec<String> = std::env::args().collect();
+    // // these two collide
+    // map.set(ObjString::from_buffer("costarring".as_bytes()),Value::bool_value(true));
+    // map.set(ObjString::from_buffer("liquid".as_bytes()),Value::bool_value(true));
     //
-    // let interpretResult = match args.len() {
-    //     1 => repl(&mut vm),
-    //     2 => runFile(&args[1], &mut vm),
-    //     _ => {
-    //         eprintln!("usage rlox [path]\n: {:?}",&args);
-    //         (InterpretResult::INTERPRET_OK)
-    //     }
-    // };
-    //
-    // vm.free();
+    // // these collide
+    // map.set(ObjString::from_buffer("declinate".as_bytes()),Value::bool_value(true));
+    // map.set(ObjString::from_buffer("macallums".as_bytes()),Value::bool_value(true));
+
+    let mut vm = VM::new();
+
+    let args: Vec<String> = std::env::args().collect();
+
+    let interpretResult = match args.len() {
+        1 => repl(&mut vm),
+        2 => runFile(&args[1], &mut vm),
+        _ => {
+            eprintln!("usage rlox [path]\n: {:?}",&args);
+            (InterpretResult::INTERPRET_OK)
+        }
+    };
+
+    vm.free();
 
 
 

@@ -112,7 +112,14 @@ impl ObjString {
 
 impl PartialEq for ObjString {
     fn eq(&self, other: &Self) -> bool {
-        self.as_bytes() == other.as_bytes()
+        // we can use hashes to compare strings,
+        // we only do a memory compare if they're the same hash
+        // to avoid representing strings that collide as the same
+        if(self.hash != other.hash) {
+            false
+        }else {
+            self.as_bytes() == other.as_bytes()
+        }
     }
 
     fn ne(&self, other: &Self) -> bool {
