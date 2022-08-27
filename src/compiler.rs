@@ -2,7 +2,7 @@ use std::str::FromStr;
 use std::alloc;
 use std::alloc::Layout;
 use crate::scanner::*;
-use crate::{Chunk, OpCode, Value};
+use crate::{Chunk, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
 use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_NIL, OP_RETURN, OP_TRUE};
 use crate::scanner::TokenType::RIGHT_PAREN;
@@ -211,7 +211,7 @@ pub fn compiled(source : Vec<u8>) {
 
 
 impl<'a> Compiler<'a> {
-    pub fn compile(&mut self) -> bool {
+    pub fn compile(&mut self, vm : &mut VM) -> bool {
         self.setScanner();
         self.advance();
         self.expression();

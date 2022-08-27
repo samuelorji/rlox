@@ -12,7 +12,7 @@ const STACk_SIZE:u32 = 256;
 pub struct VM {
     ip: usize, // store as index into array
     stack: Vec<Value>,
-    objects : Vec<*mut Obj>
+    objects : Vec<Value>
 }
 
 impl VM {
@@ -21,14 +21,9 @@ impl VM {
     }
 
     pub fn free(&mut self){
-        self.ip = 0;
-        for object in &self.objects {
-            println!("object is {:?}", unsafe {
-                let object = **object;
-                object;
-            })
+        for object in self.objects.iter_mut() {
+            object.free()
         }
-
     }
 
     pub fn new () -> Self {
@@ -39,9 +34,6 @@ impl VM {
        }
     }
 
-    // pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
-    //     self.run(chunk)
-    // }
 
     pub fn interpret(&mut self, source : Vec<u8>) -> InterpretResult {
 
@@ -74,7 +66,7 @@ impl VM {
 
 
 
-        if(!compiler.compile()){
+        if(!compiler.compile(self)){
             chunk.free();
             InterpretResult::INTERPRET_COMPILE_ERROR
         } else {
@@ -82,6 +74,10 @@ impl VM {
             chunk.free();
             result
         }
+    }
+
+    fn add_value(&mut self, value : Value) {
+        self.objects.push(value);
     }
     fn run(&mut self, chunk : &Chunk) -> InterpretResult{
         loop {
@@ -108,7 +104,7 @@ impl VM {
                     }
                     let value = self.pop_stack();
                     printValue(&value);
-                    value.free();
+                    self.objects.push(value);
                     print!("\n");
                     return InterpretResult::INTERPRET_OK
                 }
@@ -151,8 +147,8 @@ impl VM {
                     let a = self.pop_stack();
                     let result = &a == &b;
                     self.stack.push(Value::bool_value(result));
-                    a.free();
-                    b.free();
+                    self.objects.push(a);
+                    self.objects.push(b);
                 }
                 OpCode::OP_GREATER => self.binaryOp(BinaryOp::GREATER,chunk),
                 OpCode::OP_LESS => self.binaryOp(BinaryOp::LESS,chunk),
@@ -160,32 +156,6 @@ impl VM {
         }
     }
 
-    // fn valuesEqual(&self, a : &Value, b : &Value) -> bool {
-    //     if(a.valueType != b.valueType) {
-    //         return false
-    //     } else {
-    //         match a.valueType {
-    //             ValueType::BOOL => a.as_bool() == b.as_bool(),
-    //             ValueType::NIL => true, // a== b , nil == nil
-    //             ValueType::NUMBER => a.as_number() == b.as_number(),
-    //             ValueType::OBJ => {
-    //                 match (a.rep, b.rep) {
-    //                     (As::OBJ(objA), (As::OBJ(objB))) => {
-    //                         match (objA,objB) {
-    //                             (Obj::STRING(first @ObjString { .. }),  Obj::STRING(second @ObjString {..})) => {
-    //                                 first == second
-    //                             },
-    //                             _ => todo!()
-    //                         }
-    //                     },
-    //                     _ => panic!("other representations should have been handled")
-    //                 }
-    //             }
-    //
-    //             ValueType::Empty =>  true
-    //         }
-    //     }
-    // }
     fn pop_stack(&mut self) -> Value {
         self.stack.pop().unwrap()
     }
@@ -196,7 +166,6 @@ impl VM {
             _ => true
 
         }
-      //return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
     }
     fn get_line_number(&self, chunk : &Chunk) -> usize {
         let instruction = chunk.code[self.ip];
@@ -222,10 +191,10 @@ impl VM {
         // we put the first pop to b and second to a
         // because the left value is put into the stack first before the right,
         // thus, the right is popped first
-        let _b = self.stack.pop().unwrap().rep;
-        let _a  = self.stack.pop().unwrap().rep;
+        let _b = self.stack.pop().unwrap();
+        let _a  = self.stack.pop().unwrap();
 
-        match (_a,_b) {
+        match (_a.rep,_b.rep) {
             (As::Number(a),As::Number(b)) =>  {
                 let result : Result<f64,bool> = match binaryOp { // result not the best thing, but helps keep code DRY
                     BinaryOp::ADD => Ok(a + b),
@@ -248,8 +217,10 @@ impl VM {
                     let str2 = std::slice::from_raw_parts(ptrB,la);
                     let result = ObjString::concat_buffers(str1,str2);
                     self.stack.push(Value::obj_value(Obj::STRING(result)));
-                    first.free();
-                    second.free();
+                    self.objects.push(_a);
+                    self.objects.push(_b);
+                    // first.free();
+                    // second.free();
                 }
             },
             (As::OBJ(first @Obj::STRING(ObjString {length, ptr, ..})), As::Number(a)) => {
@@ -258,18 +229,18 @@ impl VM {
                     let b =  format!("{}",a);
                     let result = ObjString::concat_buffers(str1,b.as_bytes());
                     self.stack.push(Value::obj_value(Obj::STRING(result)));
-                    first.free();
+                    self.objects.push(_a);
                 }
             },
 
             ( As::Number(a),As::OBJ(first @Obj::STRING(ObjString {length, ptr, ..}))) => {
                 self.runtime_error("Cannot concatenate a number and string",self.get_line_number(chunk));
-                first.free()
+                self.objects.push(_a);
             },
             _ => {
                 self.runtime_error("Operands must be two numbers or two strings",self.get_line_number(chunk));
-                _a.free();
-                _b.free();
+                self.objects.push(_a);
+                self.objects.push(_b);
             }
         }
     }
