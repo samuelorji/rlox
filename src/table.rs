@@ -27,18 +27,18 @@ impl Entry {
     }
 
     pub fn free(&mut self) {
-        println!("freeing entry {:?}",&self.key.as_str());
         self.key.free();
         self.value.free();
     }
 }
 
-impl Drop for Entry {
-    fn drop(&mut self) {
-        self.key.free();
-        self.value.free();
-    }
-}
+// impl Drop for Entry {
+//     fn drop(&mut self) {
+//         self.key.free();
+//         self.value.free();
+//     }
+// }
+
 impl Debug for Table {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut string = String::new();
@@ -96,19 +96,22 @@ impl Table {
         }
 
         let mut entry = Self::find_entry_mut(&mut self.entries ,self.capacity, &key);
+
         let isNewKey = match (*entry).value.rep {
             As::Empty => true,
             _ => false
         };
-        (*entry).key = key;
-        (*entry).value = value;
-
 
         if (isNewKey && entry.value.is_empty()) {
             // only increment count, if this was a truly empty slot
             // tombstones were once valid entries and were counted, so no need to count them again
             self.count += 1;
         }
+        (*entry).key = key;
+        (*entry).value = value;
+
+
+
         isNewKey
 
 
@@ -232,7 +235,6 @@ impl Table {
                                 // here if the value is empty, there's a probability we've found
                                 // a previous tombstone so we should return that tombstone, or else
                                 // this really (naturally) empty slot / entry
-                                println!("index is {}",index);
                                 if tomb_stone_index.is_none() {
                                     // if we've not found a tombstone yet, just return this actually empty slot as it was never used
                                     return entries.get_mut(index).expect("index out of bounds");
@@ -248,11 +250,6 @@ impl Table {
                             }
                         }
                     }
-
-
-                    // if (p == *key || (*entry).key.is_empty()) {
-                    //     return entries.get_mut(index).expect("index out of bounds");
-                    // }
                 }
             }
             index = (index + 1) % capacity;
@@ -291,7 +288,7 @@ impl Table {
     //     }
     // }
 
-    fn get(&mut self, object : &ObjString) -> Option<&Value> {
+    pub fn get(&mut self, object : &ObjString) -> Option<&Value> {
         /**
            if (table->count == 0) return false;
 
@@ -385,6 +382,8 @@ mod tests {
         println!("{:?}",&map);
 
         let result = map.get(&ObjString::from_buffer("24".as_bytes()));
+
+        assert_eq!(result, Some(&Value::number_value(24_f64)));
         println!("{:?}",result);
     }
 }

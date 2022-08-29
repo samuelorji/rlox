@@ -19,6 +19,10 @@ pub enum OpCode {
     OP_EQUAL,
     OP_GREATER,
     OP_LESS,
+    OP_PRINT,
+    OP_POP,
+    OP_DEFINE_GLOBAL,
+    OP_GET_GLOBAL,
 
 }
 
@@ -41,6 +45,10 @@ impl From<u8> for OpCode{
             11 => OpCode::OP_EQUAL,
             12 => OpCode::OP_GREATER,
             13 => OpCode::OP_LESS,
+            14 => OpCode::OP_PRINT,
+            15 => OpCode::OP_POP,
+            16 => OpCode::OP_DEFINE_GLOBAL,
+            17 => OpCode::OP_GET_GLOBAL,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -144,6 +152,12 @@ impl Chunk {
             OpCode::OP_EQUAL => self.simpleInstruction("OP_EQUAL", offset),
             OpCode::OP_GREATER => self.simpleInstruction("OP_GREATER", offset),
             OpCode::OP_LESS => self.simpleInstruction("OP_LESS", offset),
+
+            OpCode::OP_PRINT => self.simpleInstruction("OP_PRINT", offset),
+
+            OpCode::OP_POP => self.simpleInstruction("OP_POP", offset),
+            OpCode::OP_DEFINE_GLOBAL => self.simpleInstruction("OP_DEFINE_GLOBAL", offset),
+            OpCode::OP_GET_GLOBAL => self.simpleInstruction("OP_GET_GLOBAL", offset),
         }
 
     }

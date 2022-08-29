@@ -90,7 +90,7 @@ impl Debug for As {
             As::OBJ(obj) => {
                 match obj {
                     Obj::STRING(string @ObjString {.. }) => {
-                        f.write_str(string.as_str())
+                        f.write_str(&string.as_str())
                     }
                 }
             }
@@ -100,11 +100,12 @@ impl Debug for As {
     }
 }
 
-#[derive(Debug,Copy, Clone)]
+#[derive(Debug,Copy,Clone)]
 pub struct Value {
     pub valueType : ValueType,
     pub rep : As
 }
+
 
 impl PartialEq for Value{
     fn eq(&self, other: &Self) -> bool {
@@ -151,6 +152,18 @@ impl Value {
         }
     }
 
+    pub fn soft_clone(&self) -> Self {
+
+       let rep =  match self.rep {
+            As::OBJ( Obj::STRING(p @ObjString{..})) => As::OBJ(Obj::STRING(p.clone())),
+           x => x.clone()
+        };
+        Self{
+            valueType: self.valueType,
+            rep
+        }
+    }
+
     pub fn nil_value() -> Self {
         Self {
             valueType: ValueType::NIL,
@@ -177,6 +190,17 @@ impl Value {
             x => panic!("{:?} is not a bool",x)
         }
     }
+
+    pub fn as_obj_string(self) -> ObjString {
+        match self.rep {
+            As::OBJ(Obj::STRING(obj @ ObjString { length, ptr, hash, is_clone })) => {
+                obj
+            },
+            x => panic!("{:?} is not an obj string",x)
+        }
+    }
+
+
 
     pub fn as_number(self) -> f64 {
         match self.rep {

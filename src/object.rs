@@ -8,11 +8,25 @@ pub enum Obj {
     STRING(ObjString),
 }
 
-#[derive(Copy,Clone)]
 pub struct ObjString {
     pub length: usize,
     pub ptr: *mut u8,
-    pub hash : u32
+    pub hash : u32,
+    pub is_clone : bool
+}
+
+impl Copy for ObjString {
+
+}
+impl Clone for ObjString{
+    fn clone(&self) -> Self {
+        Self {
+            length: self.length,
+            hash: self.hash,
+            ptr: self.ptr.clone(),
+            is_clone: true
+        }
+    }
 }
 
 impl Debug for ObjString {
@@ -26,7 +40,11 @@ impl ObjString {
             length: 0,
             hash:0,
             ptr: ptr::null_mut(),
+            is_clone: false
         }
+    }
+    pub fn is_clone(&self) -> bool {
+        self.is_clone
     }
     pub fn is_empty(&self) -> bool {
         self.length == 0 && self.hash == 0 && self.ptr.is_null()
@@ -34,6 +52,10 @@ impl ObjString {
 
     pub fn as_str(&self) -> &str {
         unsafe{ std::str::from_utf8(std::slice::from_raw_parts(self.ptr, self.length)).expect("cannot parse string") }
+    }
+
+    pub fn as_str_debug(&self) -> String {
+        format!("{},is clone : {}",self.as_str(),self.is_clone())
     }
     pub fn from_buffer(buffer : &[u8]) -> Self {
         let len_of_string = buffer.len();
@@ -53,12 +75,17 @@ impl ObjString {
            let stuff =  ObjString {
                 length : len_of_string,
                 ptr,
-                hash
+                hash,
+               is_clone: false
             };
             //println!("hash is {}, str is {:?}",hash, &stuff.as_str());
 
             stuff
         }
+    }
+
+    pub fn from_str(strString : &str) -> Self {
+        ObjString::from_buffer(strString.as_bytes())
     }
 
     fn hash_byte(hash : &mut u32, byte : u8) {
@@ -90,7 +117,8 @@ impl ObjString {
             ObjString {
                 length,
                 ptr,
-                hash
+                hash,
+                is_clone: false
             }
 
         }
@@ -101,7 +129,7 @@ impl ObjString {
     }
 
     pub fn free(self) {
-        if(!self.is_empty()) {
+        if(!self.is_empty() && !self.is_clone()) {
             unsafe {
                 let layout = Layout::array::<u8>(self.length).expect("cannot get layout for obj");
                 alloc::dealloc(self.ptr, layout)

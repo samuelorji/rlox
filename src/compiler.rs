@@ -1,11 +1,12 @@
 use std::str::FromStr;
 use std::alloc;
 use std::alloc::Layout;
+use std::fmt::format;
 use crate::scanner::*;
 use crate::{Chunk, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
-use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_NIL, OP_RETURN, OP_TRUE};
-use crate::scanner::TokenType::RIGHT_PAREN;
+use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
+use crate::scanner::TokenType::*;
 
 
 
@@ -83,48 +84,6 @@ impl ParseRule {
 
 impl ParseRule {
 
-    /**
-     [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
-    [TOKEN_RIGHT_PAREN]   = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_LEFT_BRACE]    = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_RIGHT_BRACE]   = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_COMMA]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_DOT]           = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_MINUS]         = {unary,    binary, PREC_TERM},
-    [TOKEN_PLUS]          = {NULL,     binary, PREC_TERM},
-    [TOKEN_SEMICOLON]     = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_SLASH]         = {NULL,     binary, PREC_FACTOR},
-    [TOKEN_STAR]          = {NULL,     binary, PREC_FACTOR},
-    [TOKEN_BANG]          = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_BANG_EQUAL]    = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_EQUAL]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_EQUAL_EQUAL]   = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_GREATER]       = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_GREATER_EQUAL] = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_LESS]          = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_LESS_EQUAL]    = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_IDENTIFIER]    = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_STRING]        = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
-    [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_ELSE]          = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_FALSE]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_FOR]           = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_FUN]           = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_IF]            = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_NIL]           = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_OR]            = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_THIS]          = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_TRUE]          = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_VAR]           = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_WHILE]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_ERROR]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_EOF]           = {NULL,     NULL,   PREC_NONE},
-     */
     fn rules() -> Vec<ParseRule> {
         // this just gives rules as to where a token type can appear, either as a prefix or as an infix,
         // example, this is invalid "/4" , but this is valid "-4", which explains why
@@ -147,6 +106,7 @@ impl ParseRule {
         rules[TokenType::LESS.as_usize()] =  createParseRule( None,Some(binary),Precedence::COMPARISON);
         rules[TokenType::LESS_EQUAL.as_usize()] =  createParseRule( None,Some(binary),Precedence::COMPARISON);
         rules[TokenType::STRING.as_usize()] =  createParseRule( Some(string),None,Precedence::NONE);
+        rules[TokenType::IDENTIFIER.as_usize()] =  createParseRule( Some(variable),None,Precedence::NONE);
 
 
 
@@ -214,11 +174,130 @@ impl<'a> Compiler<'a> {
     pub fn compile(&mut self, vm : &mut VM) -> bool {
         self.setScanner();
         self.advance();
-        self.expression();
-        self.consume(TokenType::EOF, "Expect end of expression.");
+        while(!self.match_type(EOF)){
+            self.declaration()
+        }
 
         self.end();
         !self.parser.hadError
+    }
+
+    fn declaration(&mut self) {
+        if(self.match_type(VAR)){
+            self.varDeclaration()
+        } else {
+            self.statement()
+        }
+        if(self.parser.panicMode) {
+            self.synchronize()
+        }
+
+    }
+
+    fn varDeclaration(&mut self) {
+        /**
+         uint8_t global = parseVariable("Expect variable name.");
+
+        if (match(TOKEN_EQUAL)) {
+          expression();
+        } else {
+          emitByte(OP_NIL);
+        }
+        consume(TOKEN_SEMICOLON,
+                "Expect ';' after variable declaration.");
+
+        defineVariable(global);
+         */
+
+        // parses the variable name, stores in constant pool and retrieves the index
+        let global_variable_index = self.parse_variable("Expect variable name.");
+        if(self.match_type(EQUAL)){
+            // var a = <expression>
+            self.expression()
+        } else {
+            // var a
+            self.emitOpcode(OP_NIL)
+        }
+
+        self.consume(SEMICOLON, "Expect ';' after variable declaration.");
+
+        self.define_variable(global_variable_index);
+
+
+    }
+
+    fn parse_variable(&mut self,errorMsg : &str) -> u8{
+        self.consume(IDENTIFIER, errorMsg);
+        self.identifierConstant()
+
+    }
+
+    fn define_variable(&mut self, index: u8) {
+        self.emitBytes(OpCode::OP_DEFINE_GLOBAL.to_u8(), index)
+
+    }
+
+    // makes an indentifier constant, using parser.previous.lexeme as the string
+    fn identifierConstant(&mut self) -> u8 {
+        self.makeConstant(Value::obj_value(Obj::STRING(ObjString::from_str(self.parser.previous.lexeme()))))
+    }
+
+    fn synchronize(&mut self) {
+        self.parser.panicMode = false;
+        while(self.parser.current.tokenType != EOF) {
+            if(self.parser.previous.tokenType == SEMICOLON) {
+                return;
+            }
+
+            match self.parser.current.tokenType {
+                CLASS | FUN | VAR | FOR | IF | WHILE | PRINT | RETURN => return,
+                _ => ()
+            }
+
+            self.advance();
+        }
+
+    }
+    fn statement(&mut self) {
+        if(self.match_type(PRINT)){
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn expression_statement(&mut self){
+        self.expression();
+        self.consume(SEMICOLON, "Expect ';' after expression.");
+        self.emitOpcode(OP_POP);
+
+    }
+    fn match_type(&mut self, tokenType : TokenType) -> bool {
+        if(!self.check_current_type(tokenType)) {
+            false
+        } else {
+            self.advance();
+            true
+        }
+
+    }
+
+    pub fn named_variable(&mut self) {
+        // uint8_t arg = identifierConstant(&name);
+        //   emitBytes(OP_GET_GLOBAL, arg);
+        let index = self.identifierConstant();
+        self.emitBytes(OpCode::OP_GET_GLOBAL.to_u8(), index)
+
+
+    }
+    fn check_current_type(&mut self, tokenType : TokenType) -> bool {
+        self.parser.current.tokenType == tokenType
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(SEMICOLON, "Expect ';' after value.");
+        self.emitOpcode(OP_PRINT);
     }
 
     fn emitByte(&mut self,byte: u8) {
@@ -314,15 +393,15 @@ impl<'a> Compiler<'a> {
 
     pub fn advance(&mut self) {
 
-        // self.parser.current.mut
-        let current = self.parser.current;
-        self.parser.previous = current;
+        self.parser.previous =  self.parser.current;
+        // We keep looping, reading tokens and reporting the errors,
+        // until we hit a non-error one or reach the end.
         loop {
-            let scannedToken = self.scanner.scanTokens();
-            if (scannedToken.tokenType != TokenType::ERROR) {
-                self.parser.current = scannedToken;
+            self.parser.current = self.scanner.scanTokens();
+            if (self.parser.current.tokenType != TokenType::ERROR) {
                 break;
             }
+            self.errorAtCurrent(&format!("invalid token {:?}",&self.parser.current.lexeme()))
         }
     }
     fn errorAtCurrent(&mut self, message: &str) {
@@ -469,50 +548,53 @@ fn string<'a>(compiler: &mut Compiler<'a>) {
   //  compiler.emitBytes()
 
 }
-
-fn copy_string(buffer : &[u8]) -> ObjString {
-    let len_of_string = buffer.len();
-    // allocate memory of that length
-    unsafe  {
-        let layout = Layout::array::<u8>(len_of_string).expect("cannot create layout for string");
-        let ptr = alloc::alloc(layout);
-        let mut ptr_offset : isize = 0;
-        for byte in buffer.iter() {
-            ptr.offset(ptr_offset).write(*byte);
-            ptr_offset+=1;
-        };
-        ObjString {
-            length : len_of_string,
-            ptr,
-            hash : 0
-        }
-    }
+fn variable<'a>(compiler: &mut Compiler<'a>) {
+    compiler.named_variable()
 }
 
-pub unsafe fn concat_strings(str1 : &[u8], str2 : &[u8]) -> ObjString {
-    unsafe {
-       let length =  str1.len() + str2.len();
-        let layout = Layout::array::<u8>(length).expect("cannot create layour for string");
-        let ptr = alloc::alloc(layout);
-        let mut ptr_offset = 0;
+// fn copy_string(buffer : &[u8]) -> ObjString {
+//     let len_of_string = buffer.len();
+//     // allocate memory of that length
+//     unsafe  {
+//         let layout = Layout::array::<u8>(len_of_string).expect("cannot create layout for string");
+//         let ptr = alloc::alloc(layout);
+//         let mut ptr_offset : isize = 0;
+//         for byte in buffer.iter() {
+//             ptr.offset(ptr_offset).write(*byte);
+//             ptr_offset+=1;
+//         };
+//         ObjString {
+//             length : len_of_string,
+//             ptr,
+//             hash : 0
+//         }
+//     }
+// }
 
-        for i in str1 {
-            ptr.offset(ptr_offset).write(*i);
-            ptr_offset+=1
-        }
-        for i in str2 {
-            ptr.offset(ptr_offset).write(*i);
-            ptr_offset+=1
-        }
-
-        ObjString {
-            length,
-            ptr,
-            hash: 0
-        }
-
-    }
-}
+// pub unsafe fn concat_strings(str1 : &[u8], str2 : &[u8]) -> ObjString {
+//     unsafe {
+//        let length =  str1.len() + str2.len();
+//         let layout = Layout::array::<u8>(length).expect("cannot create layour for string");
+//         let ptr = alloc::alloc(layout);
+//         let mut ptr_offset = 0;
+//
+//         for i in str1 {
+//             ptr.offset(ptr_offset).write(*i);
+//             ptr_offset+=1
+//         }
+//         for i in str2 {
+//             ptr.offset(ptr_offset).write(*i);
+//             ptr_offset+=1
+//         }
+//
+//         ObjString {
+//             length,
+//             ptr,
+//             hash: 0
+//         }
+//
+//     }
+// }
 fn number<'a>(compiler: &mut Compiler<'a>){
     //println!("{}",std::str::from_utf8(compiler.parser.previous.start).unwrap());
     let value : Value = Value::number_value(f64::from_str(compiler.parser.previous.lexeme()).unwrap());
