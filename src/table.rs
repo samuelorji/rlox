@@ -43,8 +43,10 @@ impl Debug for Table {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut string = String::new();
         for entry in &self.entries {
-            string.push_str(&format!("{:?}",entry));
-            string.push_str("\n");
+            if(!entry.key.is_empty()) {
+                string.push_str(&format!("{:?}", entry));
+                string.push_str("\n");
+            }
         }
 
         f.write_str(&string)
@@ -289,15 +291,6 @@ impl Table {
     // }
 
     pub fn get(&mut self, object : &ObjString) -> Option<&Value> {
-        /**
-           if (table->count == 0) return false;
-
-        Entry* entry = findEntry(table->entries, table->capacity, key);
-        if (entry->key == NULL) return false;
-
-        *value = entry->value;
-        return true;
-         */
         if(self.count == 0) {
             None
         }else {
@@ -308,7 +301,19 @@ impl Table {
                 Some(&entry.value)
             }
         }
+    }
 
+    pub fn get_key(&mut self, object : &ObjString) -> Option<&ObjString> {
+        if(self.count == 0) {
+            None
+        }else {
+            let entry = Table::find_entry_mut(&mut self.entries,self.capacity,&object);
+            if(entry.key.is_empty()){
+                None
+            } else {
+                Some(&entry.key)
+            }
+        }
     }
 
     fn add_all(from : &mut Table, to : &mut Table) {

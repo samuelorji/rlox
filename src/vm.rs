@@ -13,7 +13,8 @@ pub struct VM {
     ip: usize, // store as index into array
     stack: Vec<Value>,
     objects : Vec<Value>,
-    table : Table
+    table : Table,
+    pub strings : Table
 }
 
 impl VM {
@@ -23,14 +24,15 @@ impl VM {
 
     pub fn free(&mut self){
 
-       // println!("table is \n{:?}",self.table);
+        println!("table is \n{:?}",&self.table);
+        println!("strings are \n{:?}",&self.strings);
         for object in self.objects.iter_mut() {
-            //println!("object is {:?}",&object);
+            println!("object is {:?}",&object);
             object.free()
         }
 
-
          self.table.free();
+         self.strings.free();
 
 
     }
@@ -40,7 +42,8 @@ impl VM {
            ip : 0,
            stack: Vec::new(),
            objects: Vec::new(),
-           table: Table::new()
+           table: Table::new(),
+           strings: Table::new()
        }
     }
 
@@ -72,11 +75,11 @@ impl VM {
 
 
         let mut chunk  = Chunk::new();
-        let mut compiler = Compiler::new(&source,&mut chunk);
+        let mut compiler = Compiler::new(&source,&mut chunk,self);
 
 
 
-        if(!compiler.compile(self)){
+        if(!compiler.compile()){
             chunk.free();
             InterpretResult::INTERPRET_COMPILE_ERROR
         } else {
@@ -155,8 +158,8 @@ impl VM {
                     let a = self.pop_stack();
                     let result = &a == &b;
                     self.stack.push(Value::bool_value(result));
-                    self.objects.push(a);
-                    self.objects.push(b);
+                    // self.objects.push(a);
+                    // self.objects.push(b);
                 }
                 OpCode::OP_GREATER => self.binaryOp(BinaryOp::GREATER,chunk),
                 OpCode::OP_LESS => self.binaryOp(BinaryOp::LESS,chunk),
@@ -165,17 +168,20 @@ impl VM {
                     let to_be_printed = self.pop_stack();
                     printValue(&to_be_printed);
                     println!("");
-                    self.objects.push(to_be_printed)
+                    //self.objects.push(to_be_printed)
                 },
 
                 OpCode::OP_POP =>  {
-                    self.pop_stack();
+                    if(!self.stack.is_empty()) {
+                        self.pop_stack();
+                    }
                 },
 
                 OpCode::OP_DEFINE_GLOBAL => {
                     // stack will
                     let constant = self.readConstant(chunk);
                     let variable_name = constant.as_obj_string();
+                    println!("variable name is {:?}",variable_name.as_str_debug());
                     let variable_value = self.pop_stack();
                     self.table.set(variable_name, variable_value);
 
@@ -197,7 +203,7 @@ impl VM {
                            self.stack.push(cloned_val);
                        }
                    }
-                    self.objects.push(constant);
+                   // self.objects.push(constant);
                 }
             }
         }
@@ -216,7 +222,8 @@ impl VM {
     }
     fn get_line_number(&self, chunk : &Chunk) -> usize {
         let instruction = chunk.code[self.ip];
-         chunk.lines[instruction as usize]
+         //chunk.lines[instruction as usize - 1]
+         chunk.lines[0]
     }
     fn peek(&self,index : usize) -> &Value {
         &self.stack[self.stack.len() - index -1]
@@ -267,9 +274,12 @@ impl VM {
                     let str2 = std::slice::from_raw_parts(ptrB,la);
                     //println!("str1 is {:?}\n and str2 is {:?}",std::str::from_utf8(str1),std::str::from_utf8(str2) );
                     let result = ObjString::concat_buffers(str1,str2);
-                    self.stack.push(Value::obj_value(Obj::STRING(result)));
-                    self.objects.push(_a);
-                    self.objects.push(_b);
+                    let cloned_result = result.clone();
+                    self.strings.set(result, Value::nil_value());
+                    self.stack.push(Value::obj_value(Obj::STRING(cloned_result)));
+
+                    // self.objects.push(_a);
+                    // self.objects.push(_b);
                     // first.free();
                     // second.free();
                 }
@@ -279,19 +289,21 @@ impl VM {
                     let str1 = std::slice::from_raw_parts(ptr,length);
                     let b =  format!("{}",a);
                     let result = ObjString::concat_buffers(str1,b.as_bytes());
-                    self.stack.push(Value::obj_value(Obj::STRING(result)));
-                    self.objects.push(_a);
+                    let cloned_result = result.clone();
+                    self.strings.set(result, Value::nil_value());
+                    self.stack.push(Value::obj_value(Obj::STRING(cloned_result)));
+                   // self.objects.push(_a);
                 }
             },
 
-            ( As::Number(a),As::OBJ(Obj::STRING(first @ObjString {length, ptr, ..}))) => {
+            ( As::Number(a),As::OBJ(Obj::STRING(ObjString {..}))) => {
                 self.runtime_error("Cannot concatenate a number and string",self.get_line_number(chunk));
-                self.objects.push(_a);
+                //self.objects.push(_a);
             },
             _ => {
                 self.runtime_error("Operands must be two numbers or two strings",self.get_line_number(chunk));
-                self.objects.push(_a);
-                self.objects.push(_b);
+                //self.objects.push(_a);
+                //self.objects.push(_b);
             }
         }
     }

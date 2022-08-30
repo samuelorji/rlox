@@ -147,7 +147,8 @@ pub struct Compiler<'a> {
     parser: Parser<'a>,
     scanner: Scanner<'a>,
     chunk : &'a mut Chunk,
-    parseRules : Vec<ParseRule>
+    parseRules : Vec<ParseRule>,
+    vm: &'a mut VM
 }
 
 
@@ -171,7 +172,7 @@ pub fn compiled(source : Vec<u8>) {
 
 
 impl<'a> Compiler<'a> {
-    pub fn compile(&mut self, vm : &mut VM) -> bool {
+    pub fn compile(&mut self) -> bool {
         self.setScanner();
         self.advance();
         while(!self.match_type(EOF)){
@@ -239,7 +240,24 @@ impl<'a> Compiler<'a> {
 
     // makes an indentifier constant, using parser.previous.lexeme as the string
     fn identifierConstant(&mut self) -> u8 {
-        self.makeConstant(Value::obj_value(Obj::STRING(ObjString::from_str(self.parser.previous.lexeme()))))
+        let identifier = ObjString::from_str(self.parser.previous.lexeme());
+        let interned_string = self.get_interned_string(identifier);
+        self.makeConstant(Value::obj_value( Obj::STRING(interned_string)))
+    }
+
+    fn get_interned_string(&mut self, string : ObjString) -> ObjString {
+        match self.vm.strings.get_key(&string) {
+            None => {
+                let cloned_string = string.clone();
+                self.vm.strings.set(string, Value::nil_value());
+                cloned_string
+            }
+            Some(internedString) => {
+                // free allocated string, return clone instead
+                string.free();
+                internedString.clone()
+            }
+        }
     }
 
     fn synchronize(&mut self) {
@@ -353,16 +371,6 @@ impl<'a> Compiler<'a> {
         self.consume(RIGHT_PAREN, "Expect a ')' after a grouping")
     }
 
-    // pub fn number(&mut self) {
-    //
-    //     //f32::from
-    //     let value : Value = Value::number_value(f64::from_str(std::str::from_utf8(self.parser.previous.start).unwrap()).unwrap());
-    //     let constantIndex = self.makeConstant(value);
-    //     // write constant and constant index
-    //     self.emitBytes(OP_CONSTANT.to_u8(),constantIndex);
-    //
-    // }
-
     pub fn makeConstant(&mut self, value : Value) -> u8 {
         let constantIndex =  self.chunk.addConstant(value);
         if(constantIndex > u8::MAX as u32) {
@@ -458,14 +466,14 @@ impl<'a> Compiler<'a> {
     fn setScanner(&mut self) {
         self.scanner = Scanner::new(&self.source)
     }
-    pub fn new(sourcer: &'a [u8], chunk : &'a mut Chunk) -> Self {
+    pub fn new(sourcer: &'a [u8], chunk : &'a mut Chunk, vm : &'a mut VM) -> Self {
         Self {
             source: sourcer,
             parser: Parser::new(),
             scanner: Scanner::empty(),
             chunk,
-            parseRules : ParseRule::rules() // store default on the compiler
-
+            parseRules : ParseRule::rules(), // store default on the compiler
+            vm
         }
     }
 }
@@ -534,13 +542,16 @@ static void string() {
 
 fn string<'a>(compiler: &mut Compiler<'a>) {
 
+    println!("string called");
     let len = compiler.parser.previous.start.len();
-    let actualString = &compiler.parser.previous.start[1.. len - 1];
+    let string_bytes = &compiler.parser.previous.start[1.. len - 1];
 
-    let stuff = Value::obj_value(Obj::STRING(ObjString::from_buffer(actualString)));
+    let string = ObjString::from_buffer(string_bytes);
+    let interned_string = compiler.get_interned_string(string);
+    let string = Value::obj_value(Obj::STRING(interned_string));
 
     // add constant to constant pool
-    let index = compiler.makeConstant(stuff);
+    let index = compiler.makeConstant(string);
 
     // emit constant to chunk
     compiler.emitConstant(index)
