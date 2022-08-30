@@ -10,7 +10,7 @@ use crate::scanner::TokenType::*;
 
 
 
-#[derive(Copy,Clone,Debug)]
+#[derive(Copy,Clone,Debug,PartialOrd,PartialEq)]
 enum Precedence {
     NONE,
     ASSIGNMENT,  // =
@@ -66,8 +66,8 @@ impl Precedence {
 }
 #[derive(Copy,Clone)]
 struct ParseRule {
-    prefix: Option<fn(&mut Compiler) -> ()>,
-    infix: Option<fn(&mut Compiler) -> ()>,
+    prefix: Option<fn(&mut Compiler,bool) -> ()>,
+    infix: Option<fn(&mut Compiler,bool) -> ()>,
     precedence: Precedence,
 }
 
@@ -116,7 +116,7 @@ impl ParseRule {
 
 }
 
-fn createParseRule(prefix : Option<fn(&mut Compiler) -> ()>, infix :Option<fn(&mut Compiler) -> ()>, precedence : Precedence ) -> ParseRule {
+fn createParseRule(prefix : Option<fn(&mut Compiler,bool) -> ()>, infix :Option<fn(&mut Compiler,bool) -> ()>, precedence : Precedence ) -> ParseRule {
     ParseRule{
         prefix,
         infix,
@@ -300,11 +300,22 @@ impl<'a> Compiler<'a> {
 
     }
 
-    pub fn named_variable(&mut self) {
+    pub fn named_variable(&mut self,canAssign :bool) {
         // uint8_t arg = identifierConstant(&name);
         //   emitBytes(OP_GET_GLOBAL, arg);
         let index = self.identifierConstant();
-        self.emitBytes(OpCode::OP_GET_GLOBAL.to_u8(), index)
+
+        if(canAssign && self.match_type(EQUAL)){
+            // assignment of a variable
+            //name = "samuel"
+            self.expression(); // parse expression on the right hand
+            self.emitBytes(OpCode::OP_SET_GLOBAL.to_u8(),index);
+
+
+        } else {
+            self.emitBytes(OpCode::OP_GET_GLOBAL.to_u8(), index);
+        }
+
 
 
     }
@@ -333,13 +344,15 @@ impl<'a> Compiler<'a> {
         //println!("token  is {:?}, token type is {:?}, and precedence is {:?}", &token.lexeme(),&tokenType ,&precedence);
         let prefixRule  = self.getRule(tokenType).prefix;
 
+        let canAssign = precedence <= Precedence::ASSIGNMENT;
+
         match prefixRule {
 
             None => {
                 // we don't have a rule for the token type, its unexpected
                 self.error("Expect expression.")
             },
-            Some(rule) => rule(self)
+            Some(rule) => rule(self,canAssign)
         }
 
        // println!("previous is {:?} and current is {:?}", &self.parser.previous.lexeme(), &self.parser.current);
@@ -351,7 +364,11 @@ impl<'a> Compiler<'a> {
             let infixRule = self.getRule(self.parser.previous.tokenType).infix;
             match infixRule {
                 None => (),
-                Some(rule) => rule(self)
+                Some(rule) => rule(self,canAssign)
+            }
+
+            if(canAssign && self.match_type(EQUAL)){
+                self.error("Invalid assignment target.");
             }
 
         }
@@ -480,12 +497,12 @@ impl<'a> Compiler<'a> {
 
 
 
-fn grouping<'a>(compiler: &mut Compiler<'a>) {
+fn grouping<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
     compiler.expression();
     compiler.consume(RIGHT_PAREN, "Expect a ')' after a grouping")
 }
 
-fn unary<'a>(compiler: &mut Compiler<'a>){
+fn unary<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
     let operatorType = compiler.parser.previous.tokenType;
     compiler.parsePrecedence(Precedence::UNARY);
 
@@ -496,7 +513,7 @@ fn unary<'a>(compiler: &mut Compiler<'a>){
     }
 }
 
-fn literal<'a>(compiler: &mut Compiler<'a>){
+fn literal<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
     // token has been consumed by parseprecedence
    match  compiler.parser.previous.tokenType {
        TokenType::TRUE => compiler.emitOpcode(OP_TRUE),
@@ -506,7 +523,7 @@ fn literal<'a>(compiler: &mut Compiler<'a>){
    }
 }
 
-fn binary<'a>(compiler: &mut Compiler<'a>){
+fn binary<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
     let operatorType = compiler.parser.previous.tokenType;
     let parseRule = compiler.getRule(operatorType);
 
@@ -540,9 +557,8 @@ static void string() {
                                  parser.previous.length - 2)));
 }*/
 
-fn string<'a>(compiler: &mut Compiler<'a>) {
+fn string<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
 
-    println!("string called");
     let len = compiler.parser.previous.start.len();
     let string_bytes = &compiler.parser.previous.start[1.. len - 1];
 
@@ -559,8 +575,8 @@ fn string<'a>(compiler: &mut Compiler<'a>) {
   //  compiler.emitBytes()
 
 }
-fn variable<'a>(compiler: &mut Compiler<'a>) {
-    compiler.named_variable()
+fn variable<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
+    compiler.named_variable(canAssign)
 }
 
 // fn copy_string(buffer : &[u8]) -> ObjString {
@@ -606,7 +622,7 @@ fn variable<'a>(compiler: &mut Compiler<'a>) {
 //
 //     }
 // }
-fn number<'a>(compiler: &mut Compiler<'a>){
+fn number<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
     //println!("{}",std::str::from_utf8(compiler.parser.previous.start).unwrap());
     let value : Value = Value::number_value(f64::from_str(compiler.parser.previous.lexeme()).unwrap());
     let constantIndex = compiler.makeConstant(value);

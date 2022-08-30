@@ -13,7 +13,7 @@ pub struct VM {
     ip: usize, // store as index into array
     stack: Vec<Value>,
     objects : Vec<Value>,
-    table : Table,
+    globals: Table,
     pub strings : Table
 }
 
@@ -24,14 +24,14 @@ impl VM {
 
     pub fn free(&mut self){
 
-        println!("table is \n{:?}",&self.table);
+        //println!("table is \n{:?}",&self.globals);
         println!("strings are \n{:?}",&self.strings);
         for object in self.objects.iter_mut() {
-            println!("object is {:?}",&object);
+           // println!("object is {:?}",&object);
             object.free()
         }
 
-         self.table.free();
+         self.globals.free();
          self.strings.free();
 
 
@@ -42,7 +42,7 @@ impl VM {
            ip : 0,
            stack: Vec::new(),
            objects: Vec::new(),
-           table: Table::new(),
+           globals: Table::new(),
            strings: Table::new()
        }
     }
@@ -92,7 +92,7 @@ impl VM {
     fn add_value(&mut self, value : Value) {
         self.objects.push(value);
     }
-    fn run(&mut self, chunk : &Chunk) -> InterpretResult{
+    fn run(&mut self, chunk : &Chunk) -> InterpretResult {
         loop {
             #[cfg(feature = "debug_trace_execution")]
                 // prints code offset, line number instruction name, constant offset and constant value
@@ -158,8 +158,6 @@ impl VM {
                     let a = self.pop_stack();
                     let result = &a == &b;
                     self.stack.push(Value::bool_value(result));
-                    // self.objects.push(a);
-                    // self.objects.push(b);
                 }
                 OpCode::OP_GREATER => self.binaryOp(BinaryOp::GREATER,chunk),
                 OpCode::OP_LESS => self.binaryOp(BinaryOp::LESS,chunk),
@@ -168,7 +166,6 @@ impl VM {
                     let to_be_printed = self.pop_stack();
                     printValue(&to_be_printed);
                     println!("");
-                    //self.objects.push(to_be_printed)
                 },
 
                 OpCode::OP_POP =>  {
@@ -181,16 +178,15 @@ impl VM {
                     // stack will
                     let constant = self.readConstant(chunk);
                     let variable_name = constant.as_obj_string();
-                    println!("variable name is {:?}",variable_name.as_str_debug());
                     let variable_value = self.pop_stack();
-                    self.table.set(variable_name, variable_value);
+                    self.globals.set(variable_name, variable_value);
 
                 },
 
                 OpCode::OP_GET_GLOBAL => {
                     let constant = self.readConstant(chunk);
                     let variable_name = constant.as_obj_string();
-                    match self.table.get(&variable_name) {
+                    match self.globals.get(&variable_name) {
                        None => {
                            self.runtime_error(&format!("Undefined variable '{:?}'.", &variable_name), self.get_line_number(chunk));
                            return InterpretResult::INTERPRET_RUNTIME_ERROR;
@@ -203,7 +199,24 @@ impl VM {
                            self.stack.push(cloned_val);
                        }
                    }
-                   // self.objects.push(constant);
+                },
+
+                OpCode::OP_SET_GLOBAL => {
+                    /*
+                     ObjString* name = READ_STRING()
+                     if (tableSet(&vm.globals, name, peek(0)))
+                       tableDelete(&vm.globals, name);
+                       runtimeError("Undefined variable '%s'.", name->chars)
+                       return INTERPRET_RUNTIME_ERROR
+                     }*/
+
+                    let name = self.readConstant(chunk).as_obj_string();
+                    let cloned_name = name.clone();
+                    if(self.globals.set(name, self.peek(0).clone())){
+                        self.globals.remove(&cloned_name);
+                        self.runtime_error(&format!("Undefined variable '{:?}'.", &cloned_name), self.get_line_number(chunk));
+                        return InterpretResult::INTERPRET_RUNTIME_ERROR;
+                    }
                 }
             }
         }

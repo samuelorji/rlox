@@ -23,6 +23,7 @@ pub enum OpCode {
     OP_POP,
     OP_DEFINE_GLOBAL,
     OP_GET_GLOBAL,
+    OP_SET_GLOBAL,
 
 }
 
@@ -49,6 +50,7 @@ impl From<u8> for OpCode{
             15 => OpCode::OP_POP,
             16 => OpCode::OP_DEFINE_GLOBAL,
             17 => OpCode::OP_GET_GLOBAL,
+            18 => OpCode::OP_SET_GLOBAL,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -156,8 +158,9 @@ impl Chunk {
             OpCode::OP_PRINT => self.simpleInstruction("OP_PRINT", offset),
 
             OpCode::OP_POP => self.simpleInstruction("OP_POP", offset),
-            OpCode::OP_DEFINE_GLOBAL => self.simpleInstruction("OP_DEFINE_GLOBAL", offset),
-            OpCode::OP_GET_GLOBAL => self.simpleInstruction("OP_GET_GLOBAL", offset),
+            OpCode::OP_DEFINE_GLOBAL => self.constantInstruction("OP_DEFINE_GLOBAL", offset),
+            OpCode::OP_GET_GLOBAL => self.constantInstruction("OP_GET_GLOBAL", offset),
+            OpCode::OP_SET_GLOBAL => self.constantInstruction("OP_SET_GLOBAL", offset),
         }
 
     }
