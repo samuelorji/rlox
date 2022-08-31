@@ -3,7 +3,7 @@ use std::ptr;
 use std::alloc::Layout;
 use std::fmt::{Debug, Formatter};
 
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,PartialEq)]
 pub enum Obj {
     STRING(ObjString),
 }

@@ -26,6 +26,9 @@ use vm::*;
 fn main() {
 
 
+
+
+
     // let mut map = Table::new();
     //
     // // these two collide
@@ -36,7 +39,6 @@ fn main() {
     // map.set(ObjString::from_buffer("declinate".as_bytes()),Value::bool_value(true));
     // map.set(ObjString::from_buffer("macallums".as_bytes()),Value::bool_value(true));
     //
-    // println!("size of obj string {:?}",std::mem::size_of::<ObjString>());
     // println!("size of obj string {:?}",std::mem::size_of::<*mut u8>());
     // println!("size of obj string {:?}",std::mem::size_of::<u32>());
     // println!("size of obj string {:?}",std::mem::size_of::<usize>());

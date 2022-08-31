@@ -2,7 +2,7 @@ use std::mem;
 use std::fmt::{Debug, Formatter};
 use std::iter::Empty;
 use crate::object::ObjString;
-use crate::{As, Value};
+use crate::{Value};
 
 const TABLE_MAX_LOAD: f32 = 0.75;
 pub struct Table {
@@ -99,8 +99,8 @@ impl Table {
 
         let mut entry = Self::find_entry_mut(&mut self.entries ,self.capacity, &key);
 
-        let isNewKey = match (*entry).value.rep {
-            As::Empty => true,
+        let isNewKey = match (*entry).value {
+            Value::Empty => true,
             _ => false
         };
 

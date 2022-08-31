@@ -1,5 +1,5 @@
 use std::alloc::{alloc, Layout};
-use crate::{Chunk, OpCode, Value, printValue, ValueArray, compile, Compiler, compiled, As, ValueType, Table};
+use crate::{Chunk, OpCode, printValue, ValueArray, compile, Compiler, compiled, Value, Table};
 use crate::object::*;
 use std::ptr;
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
@@ -129,8 +129,8 @@ impl VM {
                     push(NUMBER_VAL(-AS_NUMBER(pop())));
                      */
                     let peeked = self.peek(0);
-                    match &peeked.rep {
-                        As::Number(r) => {
+                    match &peeked {
+                        Value::Number(r) => {
                             let number_on_stack  = self.pop_stack().as_number();
                             self.stack.push(Value::number_value(-number_on_stack));
                         },
@@ -226,9 +226,9 @@ impl VM {
         self.stack.pop().unwrap()
     }
     fn isFalsey(&self, value: &Value) -> bool {
-        match value.valueType {
-            ValueType::NIL => true,
-            ValueType::BOOL =>  !value.as_bool(),
+        match value {
+            Value::Number(0f64) => true,
+            Value::Bool(boolean) =>  !boolean,
             _ => true
 
         }
@@ -264,8 +264,8 @@ impl VM {
         let _b = self.stack.pop().unwrap();
         let _a  = self.stack.pop().unwrap();
 
-        match (_a.rep,_b.rep) {
-            (As::Number(a),As::Number(b)) =>  {
+        match (_a,_b) {
+            (Value::Number(a), Value::Number(b)) =>  {
                 let result : Result<f64,bool> = match binaryOp { // result not the best thing, but helps keep code DRY
                     BinaryOp::ADD => Ok(a + b),
                     BinaryOp::SUBTRACT => Ok(a - b),
@@ -281,7 +281,7 @@ impl VM {
                 }
 
             },
-            (As::OBJ( Obj::STRING(first @ ObjString {length, ptr, ..})), As::OBJ( Obj::STRING(second @ ObjString {length: la, ptr : ptrB, ..}))) => {
+            (Value::OBJ(Obj::STRING(first @ ObjString {length, ptr, ..})), Value::OBJ(Obj::STRING(second @ ObjString {length: la, ptr : ptrB, ..}))) => {
                 unsafe  {
                     let str1 = std::slice::from_raw_parts(ptr,length);
                     let str2 = std::slice::from_raw_parts(ptrB,la);
@@ -297,7 +297,7 @@ impl VM {
                     // second.free();
                 }
             },
-            (As::OBJ(Obj::STRING(first @ObjString {length, ptr, ..})), As::Number(a)) => {
+            (Value::OBJ(Obj::STRING(first @ObjString {length, ptr, ..})), Value::Number(a)) => {
                 unsafe  {
                     let str1 = std::slice::from_raw_parts(ptr,length);
                     let b =  format!("{}",a);
@@ -309,7 +309,7 @@ impl VM {
                 }
             },
 
-            ( As::Number(a),As::OBJ(Obj::STRING(ObjString {..}))) => {
+            ( Value::Number(a), Value::OBJ(Obj::STRING(ObjString {..}))) => {
                 self.runtime_error("Cannot concatenate a number and string",self.get_line_number(chunk));
                 //self.objects.push(_a);
             },
