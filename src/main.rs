@@ -91,12 +91,13 @@ fn repl(vm : &mut VM)  -> InterpretResult {
         std::io::stdin().read_line(&mut buffer);
 
         if (buffer.trim().eq("quit")) {
+            println!("Thanks for using Lox");
             break;
         } else {
             buffer.push('\0' as char);
             match  vm.interpret(buffer.into_bytes()) {
                 InterpretResult::INTERPRET_OK => {
-                    vm.free()
+
                 }
                 InterpretResult::INTERPRET_COMPILE_ERROR => {}
                 InterpretResult::INTERPRET_RUNTIME_ERROR => {}

@@ -25,7 +25,7 @@ impl VM {
     pub fn free(&mut self){
 
         //println!("table is \n{:?}",&self.globals);
-        println!("strings are \n{:?}",&self.strings);
+        //println!("strings are \n{:?}",&self.strings);
         for object in self.objects.iter_mut() {
            // println!("object is {:?}",&object);
             object.free()
@@ -49,44 +49,21 @@ impl VM {
 
 
     pub fn interpret(&mut self, source : Vec<u8>) -> InterpretResult {
-
-        /**
-         Chunk chunk;
-        initChunk(&chunk);
-
-        if (!compile(source, &chunk)) {
-          freeChunk(&chunk);
-          return INTERPRET_COMPILE_ERROR;
-        }
-
-        vm.chunk = &chunk;
-        vm.ip = vm.chunk->code;
-
-        InterpretResult result = run();
-
-        freeChunk(&chunk);
-        return result;
-
-         */
-
-        // compiled(source);
-        // InterpretResult::INTERPRET_OK
-
-
-
         let mut chunk  = Chunk::new();
         let mut compiler = Compiler::new(&source,&mut chunk,self);
 
-
-
-        if(!compiler.compile()){
+       let result =  if(!compiler.compile()){
             chunk.free();
+
             InterpretResult::INTERPRET_COMPILE_ERROR
         } else {
             let result = self.run(&chunk);
             chunk.free();
             result
-        }
+        };
+
+        self.ip = 0;
+        result
     }
 
     fn add_value(&mut self, value : Value) {

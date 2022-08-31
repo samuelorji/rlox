@@ -102,6 +102,9 @@ impl Chunk {
     }
 
     pub fn read(&self, index : usize) -> u8 {
+
+            //self.disassemble("test");
+       // }
         self.code[index]
     }
 
