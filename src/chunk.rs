@@ -24,6 +24,8 @@ pub enum OpCode {
     OP_DEFINE_GLOBAL,
     OP_GET_GLOBAL,
     OP_SET_GLOBAL,
+    OP_GET_LOCAL,
+    OP_SET_LOCAL,
 
 }
 
@@ -51,6 +53,8 @@ impl From<u8> for OpCode{
             16 => OpCode::OP_DEFINE_GLOBAL,
             17 => OpCode::OP_GET_GLOBAL,
             18 => OpCode::OP_SET_GLOBAL,
+            19 => OpCode::OP_GET_LOCAL,
+            20 => OpCode::OP_SET_LOCAL,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -164,6 +168,9 @@ impl Chunk {
             OpCode::OP_DEFINE_GLOBAL => self.constantInstruction("OP_DEFINE_GLOBAL", offset),
             OpCode::OP_GET_GLOBAL => self.constantInstruction("OP_GET_GLOBAL", offset),
             OpCode::OP_SET_GLOBAL => self.constantInstruction("OP_SET_GLOBAL", offset),
+
+            OpCode::OP_GET_LOCAL => self.byteInstruction("OP_GET_LOCAL", offset),
+            OpCode::OP_SET_LOCAL => self.byteInstruction("OP_SET_LOCAL", offset),
         }
 
     }
@@ -184,6 +191,13 @@ impl Chunk {
         printValue(&value);
         print!("'\n");
         offset + 2 // this should return the location of the next opcode
+    }
+
+    fn byteInstruction(&self,name : &str, offset : usize) -> usize {
+
+        let slot = self.code[offset + 1];
+        println!("{:-16} {:-4}", name, slot);
+        return offset + 2;
     }
 
     fn printValue(value : Value) {

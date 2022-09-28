@@ -83,7 +83,7 @@ impl VM {
                             print!("\n");
                     chunk.disassembleInstruction(self.ip);
                 }
-            match self.readByte(chunk) {
+            match self.readOpCode(chunk) {
                 OpCode::OP_CONSTANT => {
                     let constant = self.readConstant(chunk);
                     self.stack.push(constant);
@@ -194,6 +194,16 @@ impl VM {
                         self.runtime_error(&format!("Undefined variable '{:?}'.", &cloned_name), self.get_line_number(chunk));
                         return InterpretResult::INTERPRET_RUNTIME_ERROR;
                     }
+                },
+
+                OpCode::OP_GET_LOCAL => {
+                    let localvariableIndex = self.readByte(chunk);
+                    let localvariable = self.stack[localvariableIndex as usize];
+                    self.stack.push(localvariable)
+                }
+                OpCode::OP_SET_LOCAL => {
+                    let localVariableIndex = self.readByte(chunk);
+                    self.stack[localVariableIndex as usize] = self.peek(0).clone();
                 }
             }
         }
@@ -218,11 +228,15 @@ impl VM {
     fn peek(&self,index : usize) -> &Value {
         &self.stack[self.stack.len() - index -1]
     }
-    fn readByte(&mut self, chunk : &Chunk) -> OpCode {
-        let val : OpCode = chunk.read(self.ip).into();
+    fn readOpCode(&mut self, chunk : &Chunk) -> OpCode {
+        self.readByte(chunk).into()
+
+    }
+
+    fn readByte(&mut self, chunk: &Chunk) -> u8 {
+        let val : u8 = chunk.read(self.ip);
         self.ip +=1;
         val
-
     }
 
     // firstly read the constant index from the chunk

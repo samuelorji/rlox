@@ -142,13 +142,17 @@ impl<'a> Parser<'a> {
     }
 }
 
+
 pub struct Compiler<'a> {
     source: &'a [u8],
     parser: Parser<'a>,
     scanner: Scanner<'a>,
     chunk : &'a mut Chunk,
     parseRules : Vec<ParseRule>,
-    vm: &'a mut VM
+    vm: &'a mut VM,
+    locals: [Local<'a>; u8::MAX as usize],
+    localCount: i32,
+    scopeDepth: i32
 }
 
 
@@ -169,6 +173,21 @@ pub fn compiled(source : Vec<u8>) {
 
 }
 
+#[derive(Copy, Clone,Debug)]
+pub struct Local<'a> {
+    name: Token<'a>,
+    depth: i32
+}
+
+impl <'a> Local<'a> {
+    pub fn empty() -> Self {
+        Local {
+            name: Token::empty(),
+            depth:0
+        }
+    }
+
+}
 
 
 impl<'a> Compiler<'a> {
@@ -179,6 +198,7 @@ impl<'a> Compiler<'a> {
             self.declaration()
         }
 
+ //        println!("locals is {:?}", &self.locals[..2]);
         self.end();
         !self.parser.hadError
     }
@@ -196,22 +216,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn varDeclaration(&mut self) {
-        /**
-         uint8_t global = parseVariable("Expect variable name.");
-
-        if (match(TOKEN_EQUAL)) {
-          expression();
-        } else {
-          emitByte(OP_NIL);
-        }
-        consume(TOKEN_SEMICOLON,
-                "Expect ';' after variable declaration.");
-
-        defineVariable(global);
-         */
-
         // parses the variable name, stores in constant pool and retrieves the index
-        let global_variable_index = self.parse_variable("Expect variable name.");
+        // this will consume the variable name
+        let variable_name_index = self.parse_variable("Expect variable name.");
         if(self.match_type(EQUAL)){
             // var a = <expression>
             self.expression()
@@ -222,20 +229,75 @@ impl<'a> Compiler<'a> {
 
         self.consume(SEMICOLON, "Expect ';' after variable declaration.");
 
-        self.define_variable(global_variable_index);
-
-
+        //value is on the stack as done by the expression or Nil value above
+        self.define_variable(variable_name_index);
     }
 
     fn parse_variable(&mut self,errorMsg : &str) -> u8{
         self.consume(IDENTIFIER, errorMsg);
+        self.declareVariable();
+        if (self.scopeDepth > 0) {
+            // we're inside a scoped block, no need to make identifier
+            // There’s no need to stuff the variable’s name into the constant table,
+            // so if the declaration is inside a local scope, we return a dummy table index instead.
+            return 0;
+        }
         self.identifierConstant()
 
     }
 
+    fn declareVariable(&mut self) {
+        if(self.scopeDepth == 0) {
+            // we're in global scope, return
+            return
+        } else {
+            let token = self.parser.previous;
+            let mut i = self.localCount - 1;
+            while (i >= 0){
+                let local = &self.locals[i as usize];
+                if (local.depth != -1 && local.depth < self.scopeDepth){
+                    break
+                }
+                if( local.name == token) {
+                    self.error("Already a variable with this name in this scope.")
+                }
+                i-=1
+
+            }
+            self.addLocal(token)
+        }
+    }
+
+    fn addLocal(&mut self, token : Token<'a>) {
+
+        if (self.localCount == u8::MAX as i32) {
+           self.error("Too many local variables in function.");
+            return;
+        }
+
+        let local = &mut self.locals[self.localCount as usize];
+        local.name = token;
+        //local.depth = self.scopeDepth;
+        local.depth = -1;
+        self.localCount+=1
+
+
+    }
+
     fn define_variable(&mut self, index: u8) {
+
+        if (self.scopeDepth > 0) {
+            // no need to globally define variable if we're in a scoped block
+            self.markInitialized();
+            return;
+        }
         self.emitBytes(OpCode::OP_DEFINE_GLOBAL.to_u8(), index)
 
+    }
+    fn markInitialized(&mut self) {
+        // when declaring the variable, we set the depth of the local to be -1,
+        // here we set it to the right scope depth
+        self.locals[(self.localCount - 1) as usize].depth = self.scopeDepth;
     }
 
     // makes an indentifier constant, using parser.previous.lexeme as the string
@@ -279,14 +341,41 @@ impl<'a> Compiler<'a> {
     fn statement(&mut self) {
         if(self.match_type(PRINT)){
             self.print_statement()
+        } else if (self.match_type(LEFT_BRACE)){
+            self.beginScope();
+            self.block();
+            self.endScope();
+
         } else {
             self.expression_statement()
+        }
+    }
+
+    fn block(&mut self) {
+        while (!self.check_current_type(RIGHT_BRACE) && !self.check_current_type(EOF)) {
+            self.declaration();
+        }
+        self.consume(RIGHT_BRACE, "Expect '}' after block.");
+    }
+
+    fn beginScope(&mut self){
+        self.scopeDepth+=1
+    }
+    fn endScope(&mut self){
+        self.scopeDepth-=1;
+        while(self.localCount > 0 && self.locals[(self.localCount - 1) as usize].depth > self.scopeDepth) {
+            // we remove all local variables at the scope depth we just left
+            // so for scope depth 2, we remove al loca variables with scope depth > 2
+            self.emitOpcode(OpCode::OP_POP);
+            self.localCount-=1
+
         }
     }
 
     fn expression_statement(&mut self){
         self.expression();
         self.consume(SEMICOLON, "Expect ';' after expression.");
+        // Semantically, an expression statement evaluates the expression and discards the result
         self.emitOpcode(OP_POP);
 
     }
@@ -300,24 +389,55 @@ impl<'a> Compiler<'a> {
 
     }
 
+    fn resolveLocal(&mut self, token : Token<'a>) -> i32 {
+        let mut i = self.localCount - 1;
+
+        while(i >= 0) {
+            // walk backwards from the local stack and if any local matches the token we're looking for
+            // we return the index
+            let local = &self.locals[i as usize];
+            if (local.name == token){
+                if (local.depth == -1) {
+                    self.error("Can't read local variable in its own initializer.");
+                }
+                return  i
+            }
+            i-=1
+        }
+
+        return -1
+
+    }
     pub fn named_variable(&mut self,canAssign :bool) {
-        // uint8_t arg = identifierConstant(&name);
-        //   emitBytes(OP_GET_GLOBAL, arg);
-        let index = self.identifierConstant();
 
-        if(canAssign && self.match_type(EQUAL)){
-            // assignment of a variable
-            //name = "samuel"
-            self.expression(); // parse expression on the right hand
-            self.emitBytes(OpCode::OP_SET_GLOBAL.to_u8(),index);
+        let mut getOp : OpCode = OpCode::OP_NIL;
+        let mut setOp : OpCode = OpCode::OP_NIL;
 
-
+        let mut arg = self.resolveLocal(self.parser.previous);
+        if(arg != -1){
+            getOp = OpCode::OP_GET_LOCAL;
+            setOp= OpCode::OP_SET_LOCAL;
         } else {
-            self.emitBytes(OpCode::OP_GET_GLOBAL.to_u8(), index);
+            // this wil take the consumed identifier, stash it in the constant table and return the index
+            // where this was saved
+            arg = self.identifierConstant() as i32;
+            getOp = OpCode::OP_GET_GLOBAL;
+            setOp= OpCode::OP_SET_GLOBAL;
         }
 
 
 
+        let index = arg as u8;
+        if(canAssign && self.match_type(EQUAL)){
+            // assignment of a variable
+            //name = "samuel"
+            self.expression(); // parse expression on the right hand and place on stack
+            self.emitBytes(setOp.to_u8(),index);
+
+
+        } else {
+            self.emitBytes(getOp.to_u8(), index);
+        }
     }
     fn check_current_type(&mut self, tokenType : TokenType) -> bool {
         self.parser.current.tokenType == tokenType
@@ -490,7 +610,10 @@ impl<'a> Compiler<'a> {
             scanner: Scanner::empty(),
             chunk,
             parseRules : ParseRule::rules(), // store default on the compiler
-            vm
+            vm,
+            locals : [Local::empty(); u8::MAX as usize],
+            localCount:0,
+            scopeDepth:0
         }
     }
 }
@@ -576,6 +699,7 @@ fn string<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
 
 }
 fn variable<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
+   // println!("calling named variable");
     compiler.named_variable(canAssign)
 }
 

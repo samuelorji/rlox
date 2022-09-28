@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
+use std::ptr::eq;
 use std::thread::current;
 use TokenType::*;
 
@@ -289,11 +290,25 @@ impl<'a> Scanner<'a> {
     }
 }
 
-#[derive(PartialEq,Copy,Clone)]
+#[derive(Copy,Clone)]
 pub struct Token<'a> {
     pub tokenType: TokenType,
     pub start: &'a [u8],
     pub line: usize,
+}
+
+impl<'a> PartialEq for Token<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        if(self.tokenType != other.tokenType) {
+            return false
+        } else {
+            self.start == other.start
+        }
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
 }
 
 
