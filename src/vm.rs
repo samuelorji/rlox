@@ -2,6 +2,7 @@ use std::alloc::{alloc, Layout};
 use crate::{Chunk, OpCode, printValue, ValueArray, compile, Compiler, compiled, Value, Table};
 use crate::object::*;
 use std::ptr;
+use std::thread::sleep;
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 
 // ip is instruction pointer,
@@ -205,6 +206,24 @@ impl VM {
                     let localVariableIndex = self.readByte(chunk);
                     self.stack[localVariableIndex as usize] = self.peek(0).clone();
                 }
+
+                OpCode::OP_JUMP_IF_FALSE => {
+
+                    let jump = self.read_16_bit_short(chunk);
+
+                    println!("if false, jump is {} ",&jump);
+                    if self.isFalsey(self.peek(0)) {
+                        // if false ... add jump to ip
+                        self.ip += jump as usize
+                    }
+                }
+
+                OpCode::OP_JUMP => {
+                    let jump = self.read_16_bit_short(chunk);
+                    println!("if true, jump is {} ",&jump);
+                    self.ip += jump as usize
+
+                }
             }
         }
     }
@@ -224,6 +243,14 @@ impl VM {
         let instruction = chunk.code[self.ip];
          //chunk.lines[instruction as usize - 1]
          chunk.lines[0]
+    }
+
+    fn read_16_bit_short(&mut self, chunk: &Chunk) -> u16 {
+        let first_half_of_16_bit_jump = chunk.code[self.ip];
+        let second_half_of_16_bit_jump =  chunk.code[self.ip+1];
+        self.ip+=2;
+        ((first_half_of_16_bit_jump as u16) << 8) | (second_half_of_16_bit_jump as u16)
+
     }
     fn peek(&self,index : usize) -> &Value {
         &self.stack[self.stack.len() - index -1]

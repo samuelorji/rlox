@@ -1,4 +1,10 @@
 var a = 3;
- {
- var a = a;
- }
+if (false) {
+print a;
+} else {
+2;
+}
+
+var b = 4;
+
+print b;

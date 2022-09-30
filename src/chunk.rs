@@ -26,6 +26,8 @@ pub enum OpCode {
     OP_SET_GLOBAL,
     OP_GET_LOCAL,
     OP_SET_LOCAL,
+    OP_JUMP_IF_FALSE,
+    OP_JUMP
 
 }
 
@@ -55,9 +57,44 @@ impl From<u8> for OpCode{
             18 => OpCode::OP_SET_GLOBAL,
             19 => OpCode::OP_GET_LOCAL,
             20 => OpCode::OP_SET_LOCAL,
+            21 => OpCode::OP_JUMP_IF_FALSE,
+            22 => OpCode::OP_JUMP,
             _ => panic!( "unknown opcode {}", x)
         }
 
+    }
+}
+
+impl TryFrom<&u8> for OpCode {
+    type Error = u8;
+
+    fn try_from(value: &u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(OpCode::OP_RETURN),
+            1 => Ok(OpCode::OP_CONSTANT),
+            2 => Ok(OpCode::OP_NEGATE),
+            3 => Ok(OpCode::OP_ADD),
+            4 => Ok(OpCode::OP_SUBTRACT),
+            5 => Ok(OpCode::OP_DIVIDE),
+            6 => Ok(OpCode::OP_MULTIPLY),
+            7 => Ok(OpCode::OP_NIL),
+            8 => Ok(OpCode::OP_TRUE),
+            9 => Ok(OpCode::OP_FALSE),
+            10 => Ok(OpCode::OP_NOT),
+            11 => Ok(OpCode::OP_EQUAL),
+            12 => Ok(OpCode::OP_GREATER),
+            13 => Ok(OpCode::OP_LESS),
+            14 => Ok(OpCode::OP_PRINT),
+            15 => Ok(OpCode::OP_POP),
+            16 => Ok(OpCode::OP_DEFINE_GLOBAL),
+            17 => Ok(OpCode::OP_GET_GLOBAL),
+            18 => Ok(OpCode::OP_SET_GLOBAL),
+            19 => Ok(OpCode::OP_GET_LOCAL),
+            20 => Ok(OpCode::OP_SET_LOCAL),
+            21 => Ok(OpCode::OP_JUMP_IF_FALSE),
+            22 => Ok(OpCode::OP_JUMP),
+            x => Err(*x)
+        }
     }
 }
 impl From<OpCode> for u8 {
@@ -171,6 +208,8 @@ impl Chunk {
 
             OpCode::OP_GET_LOCAL => self.byteInstruction("OP_GET_LOCAL", offset),
             OpCode::OP_SET_LOCAL => self.byteInstruction("OP_SET_LOCAL", offset),
+            OpCode::OP_JUMP_IF_FALSE =>  self.jumpInstruction("OP_JUMP_IF_FALSE", 1,offset),
+            OpCode::OP_JUMP => self.jumpInstruction("OP_JUMP", 1,offset),
         }
 
     }
@@ -193,6 +232,24 @@ impl Chunk {
         offset + 2 // this should return the location of the next opcode
     }
 
+
+    // tatic int jumpInstruction(const char* name, int sign,
+    //                            Chunk* chunk, int offset) {
+    //   uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
+    //   jump |= chunk->code[offset + 2];
+    //   printf("%-16s %4d -> %d\n", name, offset,
+    //          offset + 3 + sign * jump);
+    //   return offset + 3;
+    // }
+
+    fn jumpInstruction(&self,name : &str, sign: u32,  offset : usize) -> usize {
+        let mut jump : u16 = ((self.code[offset + 1]) as u16 ) << 8 ;
+         jump |= (self.code[offset + 2]) as u16;
+
+        println!("{name:-16} {offset:-4} -> {}", offset + 2 + (sign as usize) + (jump as usize));
+
+        offset + 3
+    }
     fn byteInstruction(&self,name : &str, offset : usize) -> usize {
 
         let slot = self.code[offset + 1];

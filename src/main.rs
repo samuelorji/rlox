@@ -16,13 +16,13 @@ use std::borrow::Cow;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::str::Split;
 use compiler::*;
 use value::*;
 use chunk::*;
 use vm::*;
 
 
-#[warn(unused_imports)]
 fn main() {
 
 

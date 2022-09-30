@@ -5,7 +5,7 @@ use std::fmt::format;
 use crate::scanner::*;
 use crate::{Chunk, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
-use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
+use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
 use crate::scanner::TokenType::*;
 
 
@@ -346,9 +346,108 @@ impl<'a> Compiler<'a> {
             self.block();
             self.endScope();
 
-        } else {
+        } else if (self.match_type(IF)) {
+
+            self.consume(LEFT_PAREN, "Expect '(' after 'if'.");
+            self.expression();
+            self.consume(RIGHT_PAREN,  "Expect ')' after condition.");
+
+            let thenJump = self.emitJump(OP_JUMP_IF_FALSE);
+            // remove condition on stack, not needed
+            self.emitOpcode(OP_POP);
+            self.statement();
+
+            // We add an else jump telling the vm to jump to where the else is
+            /**
+             1. In the case that the condition is true, the vm will run the then branch and then encounter the else jump, which is patched later
+             2. In the case that the condition is false, the vm will skip over the then branch and hit the beginning of the else statement
+             */
+            let elseJump = self.emitJump(OP_JUMP);
+
+            // jump from if_false to after op_jump
+            self.patchJump(thenJump);
+
+            // in the case that the condition is false
+            // pop either way
+            self.emitOpcode(OP_POP);
+
+            if(self.match_type(ELSE)) {
+                self.statement();
+            }
+            // see https://craftinginterpreters.com/jumping-back-and-forth.html#else-clauses
+
+            // jump from end of if block to end of else block
+            self.patchJump(elseJump)
+        }else {
             self.expression_statement()
         }
+    }
+
+    fn emitJump(&mut self, opCode : OpCode) -> u32 {
+
+        self.emitOpcode(opCode);
+        // We use two bytes for the jump offset operand.
+        // A 16-bit offset lets us jump over up to 65,535 bytes of code, which should be plenty for our needs.
+        self.emitByte(u8::MAX);
+        self.emitByte(u8::MAX);
+
+        (self.chunk.code.len() - 2) as u32
+    }
+
+    fn patchJump(&mut self, offset : u32) {
+        // offset here is the index of the last byte that was handled
+        // before jumping
+
+
+        //println!("chunk length is {}",self.chunk.code.len());
+        // this says jump `jump` bits over to the next point of execution
+
+        // jump is how far ahead in the stack we jump ahead to.
+        /**
+         E.g, if the then branch of the if statement results in 400 instructions on the stack,
+        then jump will be 400. The next challenge is how to encode the result 400 in our byte code,
+        our stack is just a vec of bytes, in emit jump, we used two slots (16 bit) to store the value of this jump
+        which shouldn't be more than u16::MAX. Now, how do we encode a 16 bit value in 2 (8 bit values)
+         */
+        let jump = self.chunk.code.len() as u32 - offset - 2;
+
+        //println!("jump is {}, offset is {}",&jump,&offset);
+        if(jump as u16 > u16::MAX){
+            self.error("Too much code to jump over.")
+        }
+
+
+        /**
+         Turns out the trick is quite simple, taking our example from above, let's say the jump is 400, we want to encode it.
+        400 in binary is 0000000110010000 (16 bit).
+        first thing, we shift the jump 8 bits to the right, to kinda eliminate the 2nd byte (8 bit) and have only the first byte,
+        and then multiply (and) the result with 0xff (0000000011111111) which just makes every value outside the right most 8 bits 0 (thus eliminating overflows )
+        1. Doing that (400 >> 8) & 0xff  will give us 0000000000000001 .. which is just 1 in decimal,
+        2. Mutliply jump by 0xff to eliminate leftmost 8 bits , (400 & 0xff) which is 0000000010010000 ehich is 144 in decimal
+
+        Now, we've encoded 400 into two numbers 1 and 144 , which when converted to binary, merged and then converted to decimal will give 400
+
+        To decode this, we just do the inverse of what we did above,
+        1. we get what's supposed to be the left most byte (8 bit) and shift it to the left first.
+            1 << 8 gives 0000000100000000
+        2. we take what's supposed to be the 2nd byte (144) and that in binary is 0000000010010000,
+        now we do an or on them to pretty much merge them
+        and that gives 0000000110010000, which was our number in the first place
+         */
+
+
+        // tl:dr , this encodes the jump in 16 bit binary into two 8 bit binary
+        let first_half_of_16_bit_jump = ((jump >> 8) & 0xff) as u8;
+        let second_half_of_16_bit_jump = (jump & 0xff) as u8;
+
+        // another way is just to shift (if needed) and cast to u8
+        // let first_half_of_16_bit_jump = (jump >> 8) as u8;
+        // let second_half_of_16_bit_jump = jump as u8;
+
+        // seee vm (fn read_16_bit_short) for how we decode
+         self.chunk.code[offset as usize] = first_half_of_16_bit_jump;
+         self.chunk.code[(offset + 1) as usize] = second_half_of_16_bit_jump;
+
     }
 
     fn block(&mut self) {
@@ -496,6 +595,10 @@ impl<'a> Compiler<'a> {
     pub fn end(&mut self) {
         #[cfg(feature = "debug_trace_execution")]
             {
+                for (i, code) in self.chunk.code.iter().enumerate() {
+                    let opcodeOpt = OpCode::try_from(code);
+                    println!("index: {}, code: {:?}", i, opcodeOpt)
+                }
                 if(!self.parser.hadError){
                     self.chunk.disassemble("code");
                 }
