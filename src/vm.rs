@@ -211,7 +211,7 @@ impl VM {
 
                     let jump = self.read_16_bit_short(chunk);
 
-                    println!("if false, jump is {} ",&jump);
+                    // check if what's on stack is true or not
                     if self.isFalsey(self.peek(0)) {
                         // if false ... add jump to ip
                         self.ip += jump as usize
@@ -220,8 +220,13 @@ impl VM {
 
                 OpCode::OP_JUMP => {
                     let jump = self.read_16_bit_short(chunk);
-                    println!("if true, jump is {} ",&jump);
                     self.ip += jump as usize
+
+                }
+
+                OpCode::OP_LOOP => {
+                    let loopJump = self.read_16_bit_short(chunk);
+                    self.ip-= loopJump as usize
 
                 }
             }

@@ -5,7 +5,7 @@ use std::fmt::format;
 use crate::scanner::*;
 use crate::{Chunk, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
-use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
+use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
 use crate::scanner::TokenType::*;
 
 
@@ -107,7 +107,8 @@ impl ParseRule {
         rules[TokenType::LESS_EQUAL.as_usize()] =  createParseRule( None,Some(binary),Precedence::COMPARISON);
         rules[TokenType::STRING.as_usize()] =  createParseRule( Some(string),None,Precedence::NONE);
         rules[TokenType::IDENTIFIER.as_usize()] =  createParseRule( Some(variable),None,Precedence::NONE);
-
+        rules[TokenType::OR.as_usize()] =  createParseRule( None,Some(or),Precedence::NONE);
+        rules[TokenType::AND.as_usize()] =  createParseRule( None,Some(and),Precedence::NONE);
 
 
         rules
@@ -341,6 +342,10 @@ impl<'a> Compiler<'a> {
     fn statement(&mut self) {
         if(self.match_type(PRINT)){
             self.print_statement()
+        }else if (self.match_type(WHILE)){
+            self.while_statement()
+        } else if (self.match_type(FOR)){
+            self.for_statement()
         } else if (self.match_type(LEFT_BRACE)){
             self.beginScope();
             self.block();
@@ -381,6 +386,97 @@ impl<'a> Compiler<'a> {
         }else {
             self.expression_statement()
         }
+    }
+
+    fn for_statement(&mut self) {
+        self.beginScope();
+        self.consume(LEFT_PAREN, "Expect '(' after 'for'.");
+       // self.consume(SEMICOLON, "Expect ';'.");
+
+        // initialization clause:
+
+        if(self.match_type(SEMICOLON)){
+            // no initializer
+        } else if (self.match_type(VAR)){
+            self.varDeclaration()
+        } else {
+            self.expression_statement() // consumes semicolon and pops value off stack
+        }
+
+
+        let mut loopStart = self.chunk.code.len();
+        //self.consume(TOKEN_SEMICOLON, "Expect ';'.");
+
+        let mut exitJump = -1;
+        if(!self.match_type(SEMICOLON)){
+            // Then there's a condition
+            self.expression(); // put condition on stack
+            self.consume(SEMICOLON, "Expect ';' after loop condition.");
+
+            // Jump out of the loop if the condition is false.
+            exitJump = self.emitJump(OP_JUMP_IF_FALSE) as i32;
+            self.emitOpcode(OP_POP); // pop Condition off stack.
+        }
+
+        if(!self.match_type(RIGHT_PAREN)){
+            // first, we emit an unconditional jump that hops over the increment clause’s code to the body of the loop.
+            let bodyJump = self.emitJump(OP_JUMP);
+            let incrementStart = self.chunk.code.len();
+            println!("increment start is {}",&incrementStart);
+            self.expression(); // put condition on stack
+            self.emitOpcode(OP_POP); // pop of the value afterwards
+
+            self.consume(RIGHT_PAREN, "Expect ')' after for clauses.");
+
+            self.emitLoop(loopStart); // take us back to top of for loop condition
+
+            loopStart = incrementStart;
+            self.patchJump(bodyJump) // jump to beginning of body loop
+
+        }
+
+        self.statement();
+        self.emitLoop(loopStart); // after body, loop to increment, increment will loop back to condition
+        if (exitJump != -1) {
+            // if there's a condition, set exit jump
+            self.patchJump(exitJump as u32);
+            self.emitOpcode(OP_POP); // Condition.
+        }
+        // condition -> increment -> (body -> increment -> condition)*
+        self.endScope()
+    }
+    fn while_statement(&mut self) {
+        let mut loopStart = self.chunk.code.len();
+        self.consume(LEFT_PAREN, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(RIGHT_PAREN, "Expect ')' after condition.");
+
+        let exitJump = self.emitJump(OP_JUMP_IF_FALSE);
+        self.emitOpcode(OP_POP);
+        self.statement();
+
+        self.emitLoop(loopStart);
+
+
+        self.patchJump(exitJump);
+        self.emitOpcode(OP_POP);
+    }
+
+    fn emitLoop(&mut self, loopStart : usize) {
+        // It’s a bit like emitJump() and patchJump() combined.
+        // It emits a new loop instruction, which unconditionally jumps backwards by a given offset.
+        self.emitOpcode(OP_LOOP);
+
+        let offset = self.chunk.code.len() - loopStart + 2;
+
+        if(offset as u16 > u16::MAX) {
+            self.error("Loop Body too large");
+        }
+
+        self.emitByte((offset >> 8) as u8);
+        self.emitByte(offset as u8);
+
+
     }
 
     fn emitJump(&mut self, opCode : OpCode) -> u32 {
@@ -595,10 +691,10 @@ impl<'a> Compiler<'a> {
     pub fn end(&mut self) {
         #[cfg(feature = "debug_trace_execution")]
             {
-                for (i, code) in self.chunk.code.iter().enumerate() {
-                    let opcodeOpt = OpCode::try_from(code);
-                    println!("index: {}, code: {:?}", i, opcodeOpt)
-                }
+                // for (i, code) in self.chunk.code.iter().enumerate() {
+                //     let opcodeOpt = OpCode::try_from(code);
+                //     println!("index: {}, code: {:?}", i, opcodeOpt)
+                // }
                 if(!self.parser.hadError){
                     self.chunk.disassemble("code");
                 }
@@ -719,6 +815,7 @@ impl<'a> Compiler<'a> {
             scopeDepth:0
         }
     }
+
 }
 
 
@@ -806,55 +903,40 @@ fn variable<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
     compiler.named_variable(canAssign)
 }
 
-// fn copy_string(buffer : &[u8]) -> ObjString {
-//     let len_of_string = buffer.len();
-//     // allocate memory of that length
-//     unsafe  {
-//         let layout = Layout::array::<u8>(len_of_string).expect("cannot create layout for string");
-//         let ptr = alloc::alloc(layout);
-//         let mut ptr_offset : isize = 0;
-//         for byte in buffer.iter() {
-//             ptr.offset(ptr_offset).write(*byte);
-//             ptr_offset+=1;
-//         };
-//         ObjString {
-//             length : len_of_string,
-//             ptr,
-//             hash : 0
-//         }
-//     }
-// }
-
-// pub unsafe fn concat_strings(str1 : &[u8], str2 : &[u8]) -> ObjString {
-//     unsafe {
-//        let length =  str1.len() + str2.len();
-//         let layout = Layout::array::<u8>(length).expect("cannot create layour for string");
-//         let ptr = alloc::alloc(layout);
-//         let mut ptr_offset = 0;
-//
-//         for i in str1 {
-//             ptr.offset(ptr_offset).write(*i);
-//             ptr_offset+=1
-//         }
-//         for i in str2 {
-//             ptr.offset(ptr_offset).write(*i);
-//             ptr_offset+=1
-//         }
-//
-//         ObjString {
-//             length,
-//             ptr,
-//             hash: 0
-//         }
-//
-//     }
-// }
 fn number<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
     //println!("{}",std::str::from_utf8(compiler.parser.previous.start).unwrap());
     let value : Value = Value::number_value(f64::from_str(compiler.parser.previous.lexeme()).unwrap());
     let constantIndex = compiler.makeConstant(value);
     // write constant and constant index
     compiler.emitConstant(constantIndex);
+}
+
+fn or<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
+
+    // left hand is already on stack:
+    // if LHS is false, we fall through to OP_POP, which pops the LHS and falls to parse the rhs
+    //  if true we can ignore right hand side and jump to after precedence:or expression due to end jump
+
+    let elseJump = compiler.emitJump(OP_JUMP_IF_FALSE);
+    let endJump = compiler.emitJump(OP_JUMP);
+    compiler.patchJump(elseJump);
+    compiler.emitOpcode(OP_POP);
+
+    compiler.parsePrecedence(Precedence::OR);
+    compiler.patchJump(endJump);
+
+}
+
+fn and<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
+    //At the point this is called, the left-hand side expression has already been compiled. That means at runtime, i
+    // ts value will be on top of the stack. If that value is falsey, then we know the entire and must be false,
+    // so we skip the right operand and leave the left-hand side value as the result of the entire expression.
+    // Otherwise, we discard the left-hand value and evaluate the right operand which becomes the result of the whole and expression.
+    let endJump = compiler.emitJump(OP_JUMP_IF_FALSE);
+    compiler.emitOpcode(OP_POP);
+    compiler.parsePrecedence(Precedence::AND);
+
+    compiler.patchJump(endJump);
 }
 pub fn compile(source: Vec<u8>, chunk: &mut Chunk) -> bool {
     ///advance();

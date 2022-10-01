@@ -27,7 +27,8 @@ pub enum OpCode {
     OP_GET_LOCAL,
     OP_SET_LOCAL,
     OP_JUMP_IF_FALSE,
-    OP_JUMP
+    OP_JUMP,
+    OP_LOOP
 
 }
 
@@ -59,6 +60,7 @@ impl From<u8> for OpCode{
             20 => OpCode::OP_SET_LOCAL,
             21 => OpCode::OP_JUMP_IF_FALSE,
             22 => OpCode::OP_JUMP,
+            23 => OpCode::OP_LOOP,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -210,6 +212,8 @@ impl Chunk {
             OpCode::OP_SET_LOCAL => self.byteInstruction("OP_SET_LOCAL", offset),
             OpCode::OP_JUMP_IF_FALSE =>  self.jumpInstruction("OP_JUMP_IF_FALSE", 1,offset),
             OpCode::OP_JUMP => self.jumpInstruction("OP_JUMP", 1,offset),
+
+            OpCode::OP_LOOP => self.jumpInstruction("OP_LOOP", -1, offset)
         }
 
     }
@@ -242,11 +246,11 @@ impl Chunk {
     //   return offset + 3;
     // }
 
-    fn jumpInstruction(&self,name : &str, sign: u32,  offset : usize) -> usize {
+    fn jumpInstruction(&self,name : &str, sign: isize,  offset : usize) -> usize {
         let mut jump : u16 = ((self.code[offset + 1]) as u16 ) << 8 ;
          jump |= (self.code[offset + 2]) as u16;
 
-        println!("{name:-16} {offset:-4} -> {}", offset + 2 + (sign as usize) + (jump as usize));
+        println!("{name:-16} {offset:-4} -> {}", ((offset + 3) as isize + (sign * jump as isize)) as usize);
 
         offset + 3
     }

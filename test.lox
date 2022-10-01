@@ -1,10 +1,5 @@
-var a = 3;
-if (false) {
-print a;
-} else {
-2;
+var i = 2;
+
+for (; i< 4; i = i+1){
+print i;
 }
-
-var b = 4;
-
-print b;
