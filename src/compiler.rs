@@ -3,7 +3,7 @@ use std::alloc;
 use std::alloc::Layout;
 use std::fmt::format;
 use crate::scanner::*;
-use crate::{Chunk, OpCode, Value, VM};
+use crate::{Chunk, ObjFunction, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
 use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
 use crate::scanner::TokenType::*;
@@ -144,16 +144,45 @@ impl<'a> Parser<'a> {
 }
 
 
+ enum FunctionType {
+    FUNCTION,
+    SCRIPT
+}
+
+#[derive(Copy, Clone)]
+struct CompilerState<'a >{
+    locals:[Local<'a>; u8::MAX as usize],
+    localCount: i32,
+    scopeDepth: i32,
+    functionChunkIndex: usize
+}
+
+impl<'a> CompilerState<'a> {
+    fn new() -> Self {
+        CompilerState {
+            locals: [Local::empty(); u8::MAX as usize],
+            localCount: 1,
+            scopeDepth: 0,
+            functionChunkIndex:0
+        }
+
+    }
+}
+
 pub struct Compiler<'a> {
     source: &'a [u8],
     parser: Parser<'a>,
     scanner: Scanner<'a>,
-    chunk : &'a mut Chunk,
+    //currentChunk: usize,
+    currentFunction: ObjFunction,
+    functionType: FunctionType,
     parseRules : Vec<ParseRule>,
     vm: &'a mut VM,
-    locals: [Local<'a>; u8::MAX as usize],
-    localCount: i32,
-    scopeDepth: i32
+    state: [CompilerState<'a>; u8::MAX as usize],
+    //currentState: usize,
+   //previousState:usize,
+    //nextAvailableStateIndex: usize,
+    previousFunction: ObjFunction
 }
 
 
@@ -192,20 +221,26 @@ impl <'a> Local<'a> {
 
 
 impl<'a> Compiler<'a> {
-    pub fn compile(&mut self) -> bool {
+    pub fn compile(&mut self) -> Option<ObjFunction> {
         self.setScanner();
         self.advance();
         while(!self.match_type(EOF)){
             self.declaration()
         }
 
- //        println!("locals is {:?}", &self.locals[..2]);
-        self.end();
-        !self.parser.hadError
+       let returnedFunc = self.end();
+        if self.parser.hadError {
+            None
+        }else {
+            Some(returnedFunc)
+        }
     }
 
     fn declaration(&mut self) {
-        if(self.match_type(VAR)){
+        if (self.match_type(FUN)) {
+            self.fun_declaration();
+        }
+        else if(self.match_type(VAR)){
             self.varDeclaration()
         } else {
             self.statement()
@@ -216,10 +251,73 @@ impl<'a> Compiler<'a> {
 
     }
 
+    fn fun_declaration(&mut self) {
+
+        println!("previous is {:?}",self.parser.previous);
+        let  (global, functionName) = self.parse_variable("Expect function name.",true);
+        let functionName = functionName.expect("expect a variable name when parsing a variable in a function declaration");
+        self.markInitialized();
+
+        self.function(FunctionType::FUNCTION, functionName);
+
+        self.define_variable(global);
+    }
+
+
+    fn function(&mut self, functionType : FunctionType, functionName : ObjString) {
+
+        // Compiler compiler;
+        // initCompiler(&compiler, type);
+        // save previous state here before
+
+        self.createFunctionState(functionName);
+
+        self.beginScope();
+
+        self.consume(LEFT_PAREN, "Expect '(' after function name.");
+        self.consume(RIGHT_PAREN, "Expect ')' after parameters.");
+        self.consume(LEFT_BRACE, "Expect '{' before function body.");
+
+
+        self.block();
+
+        let function = self.end();
+        // println!("current chunk is {}",self.currentFunction.chunkIndex as usize);
+        // self.vm.functionChunks[self.currentFunction.chunkIndex as usize].disassemble("test");
+
+
+        let constantIndex = self.makeConstant(Value::obj_value(Obj::FUNCTION(function)));
+        self.emitBytes(OP_CONSTANT.to_u8(),constantIndex );
+
+
+    }
+    
+    fn createFunctionState(&mut self, functionName : ObjString) {
+        let newChunk = Chunk::new();
+        let chunkIndex = self.vm.functionChunks.len();
+        //println!("chunk index {}",self.vm.functionChunks.len());
+        //self.previousChunk= self.currentFunction.chunkIndex as usize;
+        self.previousFunction = self.currentFunction;
+        // self.nextAvailableStateIndex = self.currentState+1;
+        // self.currentState = self.nextAvailableStateIndex;
+        
+//        self.currentFunction.chunkIndex as usize  = chunkIndex;
+        self.vm.functionChunks.push(newChunk);
+
+        self.currentFunction = ObjFunction {
+            arity: 0,
+            chunkIndex: chunkIndex as i32,
+            name: functionName
+        };
+
+        
+        
+
+    }
     fn varDeclaration(&mut self) {
         // parses the variable name, stores in constant pool and retrieves the index
         // this will consume the variable name
-        let variable_name_index = self.parse_variable("Expect variable name.");
+        let variable_name_index = self.parse_variable("Expect variable name.",false).0;
         if(self.match_type(EQUAL)){
             // var a = <expression>
             self.expression()
@@ -234,29 +332,30 @@ impl<'a> Compiler<'a> {
         self.define_variable(variable_name_index);
     }
 
-    fn parse_variable(&mut self,errorMsg : &str) -> u8{
+    fn parse_variable(&mut self,errorMsg : &str, returnVariableName : bool) -> (u8,Option<ObjString>){
         self.consume(IDENTIFIER, errorMsg);
         self.declareVariable();
-        if (self.scopeDepth > 0) {
+       // println!("inside parse: {}, current state is {}", self.state[self.currentFunction.chunkIndex as usize].scopeDepth, self.currentState);
+        if (self.state[self.currentFunction.chunkIndex as usize].scopeDepth > 0) {
             // we're inside a scoped block, no need to make identifier
             // There’s no need to stuff the variable’s name into the constant table,
             // so if the declaration is inside a local scope, we return a dummy table index instead.
-            return 0;
+            return (0,None);
         }
-        self.identifierConstant()
+        self.identifierConstant(returnVariableName)
 
     }
 
     fn declareVariable(&mut self) {
-        if(self.scopeDepth == 0) {
+        if(self.state[self.currentFunction.chunkIndex as usize].scopeDepth == 0) {
             // we're in global scope, return
             return
         } else {
             let token = self.parser.previous;
-            let mut i = self.localCount - 1;
+            let mut i = self.state[self.currentFunction.chunkIndex as usize].localCount - 1;
             while (i >= 0){
-                let local = &self.locals[i as usize];
-                if (local.depth != -1 && local.depth < self.scopeDepth){
+                let local = &self.state[self.currentFunction.chunkIndex as usize].locals[i as usize];
+                if (local.depth != -1 && local.depth < self.state[self.currentFunction.chunkIndex as usize].scopeDepth){
                     break
                 }
                 if( local.name == token) {
@@ -271,23 +370,23 @@ impl<'a> Compiler<'a> {
 
     fn addLocal(&mut self, token : Token<'a>) {
 
-        if (self.localCount == u8::MAX as i32) {
+        if (self.state[self.currentFunction.chunkIndex as usize].localCount == u8::MAX as i32) {
            self.error("Too many local variables in function.");
             return;
         }
 
-        let local = &mut self.locals[self.localCount as usize];
+        let local = &mut self.state[self.currentFunction.chunkIndex as usize].locals[self.state[self.currentFunction.chunkIndex as usize].localCount as usize];
         local.name = token;
-        //local.depth = self.scopeDepth;
+        //local.depth = self.state[self.currentFunction.chunkIndex as usize].scopeDepth;
         local.depth = -1;
-        self.localCount+=1
+        self.state[self.currentFunction.chunkIndex as usize].localCount+=1
 
 
     }
 
     fn define_variable(&mut self, index: u8) {
 
-        if (self.scopeDepth > 0) {
+        if (self.state[self.currentFunction.chunkIndex as usize].scopeDepth > 0) {
             // no need to globally define variable if we're in a scoped block
             self.markInitialized();
             return;
@@ -296,16 +395,38 @@ impl<'a> Compiler<'a> {
 
     }
     fn markInitialized(&mut self) {
+        let currentScopeDepth = self.state[self.currentFunction.chunkIndex as usize].scopeDepth;
+        let currentLocalCount = self.state[self.currentFunction.chunkIndex as usize].localCount;
+
+        //println!("scope depth {}, localCount : {}, currentState is {}", &currentScopeDepth, currentLocalCount,self.currentState);
+
+        if (self.state[self.currentFunction.chunkIndex as usize].scopeDepth == 0){
+            return;
+        }
         // when declaring the variable, we set the depth of the local to be -1,
         // here we set it to the right scope depth
-        self.locals[(self.localCount - 1) as usize].depth = self.scopeDepth;
+
+        //self.locals[(self.localCount - 1) as usize].depth = self.scopeDepth;
+
+       //  let currentScopeDepth = self.state[self.currentFunction.chunkIndex as usize].scopeDepth;
+       //  let currentLocalCount = self.state[self.currentFunction.chunkIndex as usize].localCount;
+       //
+       //  println!("scope depth {}, localCount : {}, currentState is {}", &currentScopeDepth, currentLocalCount,self.currentState);
+       // // self.state[self.currentFunction.chunkIndex as usize].locals[(currentLocalCount - 1) as usize].depth = currentScopeDepth;
+        self.state[self.currentFunction.chunkIndex as usize].locals[(self.state[self.currentFunction.chunkIndex as usize].localCount - 1) as usize].depth = self.state[self.currentFunction.chunkIndex as usize].scopeDepth;
+
     }
 
     // makes an indentifier constant, using parser.previous.lexeme as the string
-    fn identifierConstant(&mut self) -> u8 {
+    fn identifierConstant(&mut self, returnIdentifier: bool) -> (u8,Option<ObjString>) {
         let identifier = ObjString::from_str(self.parser.previous.lexeme());
         let interned_string = self.get_interned_string(identifier);
-        self.makeConstant(Value::obj_value( Obj::STRING(interned_string)))
+        let constantIndex = self.makeConstant(Value::obj_value( Obj::STRING(interned_string)));
+        if(returnIdentifier){
+            (constantIndex,Some(interned_string.clone()))
+        } else{
+            (constantIndex,None)
+        }
     }
 
     fn get_interned_string(&mut self, string : ObjString) -> ObjString {
@@ -404,7 +525,7 @@ impl<'a> Compiler<'a> {
         }
 
 
-        let mut loopStart = self.chunk.code.len();
+        let mut loopStart = self.vm.functionChunks[self.currentFunction.chunkIndex as usize].code.len();
         //self.consume(TOKEN_SEMICOLON, "Expect ';'.");
 
         let mut exitJump = -1;
@@ -421,7 +542,7 @@ impl<'a> Compiler<'a> {
         if(!self.match_type(RIGHT_PAREN)){
             // first, we emit an unconditional jump that hops over the increment clause’s code to the body of the loop.
             let bodyJump = self.emitJump(OP_JUMP);
-            let incrementStart = self.chunk.code.len();
+            let incrementStart = self.vm.functionChunks[self.currentFunction.chunkIndex as usize].code.len();
             self.expression(); // put condition on stack
             self.emitOpcode(OP_POP); // pop of the value afterwards
 
@@ -445,7 +566,7 @@ impl<'a> Compiler<'a> {
         self.endScope()
     }
     fn while_statement(&mut self) {
-        let mut loopStart = self.chunk.code.len();
+        let mut loopStart = self.vm.functionChunks[self.currentFunction.chunkIndex as usize].code.len();
         self.consume(LEFT_PAREN, "Expect '(' after 'while'.");
         self.expression();
         self.consume(RIGHT_PAREN, "Expect ')' after condition.");
@@ -466,7 +587,7 @@ impl<'a> Compiler<'a> {
         // It emits a new loop instruction, which unconditionally jumps backwards by a given offset.
         self.emitOpcode(OP_LOOP);
 
-        let offset = self.chunk.code.len() - loopStart + 2;
+        let offset = self.vm.functionChunks[self.currentFunction.chunkIndex as usize].code.len() - loopStart + 2;
 
         if(offset as u16 > u16::MAX) {
             self.error("Loop Body too large");
@@ -486,7 +607,7 @@ impl<'a> Compiler<'a> {
         self.emitByte(u8::MAX);
         self.emitByte(u8::MAX);
 
-        (self.chunk.code.len() - 2) as u32
+        (self.vm.functionChunks[self.currentFunction.chunkIndex as usize].code.len() - 2) as u32
     }
 
     fn patchJump(&mut self, offset : u32) {
@@ -504,7 +625,7 @@ impl<'a> Compiler<'a> {
         our stack is just a vec of bytes, in emit jump, we used two slots (16 bit) to store the value of this jump
         which shouldn't be more than u16::MAX. Now, how do we encode a 16 bit value in 2 (8 bit values)
          */
-        let jump = self.chunk.code.len() as u32 - offset - 2;
+        let jump = self.vm.functionChunks[self.currentFunction.chunkIndex as usize].code.len() as u32 - offset - 2;
 
         //println!("jump is {}, offset is {}",&jump,&offset);
         if(jump as u16 > u16::MAX){
@@ -540,8 +661,8 @@ impl<'a> Compiler<'a> {
         // let second_half_of_16_bit_jump = jump as u8;
 
         // seee vm (fn read_16_bit_short) for how we decode
-         self.chunk.code[offset as usize] = first_half_of_16_bit_jump;
-         self.chunk.code[(offset + 1) as usize] = second_half_of_16_bit_jump;
+         self.vm.functionChunks[self.currentFunction.chunkIndex as usize].code[offset as usize] = first_half_of_16_bit_jump;
+         self.vm.functionChunks[self.currentFunction.chunkIndex as usize].code[(offset + 1) as usize] = second_half_of_16_bit_jump;
 
     }
 
@@ -553,15 +674,15 @@ impl<'a> Compiler<'a> {
     }
 
     fn beginScope(&mut self){
-        self.scopeDepth+=1
+        self.state[self.currentFunction.chunkIndex as usize].scopeDepth+=1
     }
     fn endScope(&mut self){
-        self.scopeDepth-=1;
-        while(self.localCount > 0 && self.locals[(self.localCount - 1) as usize].depth > self.scopeDepth) {
+        self.state[self.currentFunction.chunkIndex as usize].scopeDepth-=1;
+        while(self.state[self.currentFunction.chunkIndex as usize].localCount > 0 && self.state[self.currentFunction.chunkIndex as usize].locals[(self.state[self.currentFunction.chunkIndex as usize].localCount - 1) as usize].depth > self.state[self.currentFunction.chunkIndex as usize].scopeDepth) {
             // we remove all local variables at the scope depth we just left
             // so for scope depth 2, we remove al loca variables with scope depth > 2
             self.emitOpcode(OpCode::OP_POP);
-            self.localCount-=1
+            self.state[self.currentFunction.chunkIndex as usize].localCount-=1
 
         }
     }
@@ -584,12 +705,12 @@ impl<'a> Compiler<'a> {
     }
 
     fn resolveLocal(&mut self, token : Token<'a>) -> i32 {
-        let mut i = self.localCount - 1;
+        let mut i = self.state[self.currentFunction.chunkIndex as usize].localCount - 1;
 
         while(i >= 0) {
             // walk backwards from the local stack and if any local matches the token we're looking for
             // we return the index
-            let local = &self.locals[i as usize];
+            let local = &self.state[self.currentFunction.chunkIndex as usize].locals[i as usize];
             if (local.name == token){
                 if (local.depth == -1) {
                     self.error("Can't read local variable in its own initializer.");
@@ -614,7 +735,7 @@ impl<'a> Compiler<'a> {
         } else {
             // this wil take the consumed identifier, stash it in the constant table and return the index
             // where this was saved
-            arg = self.identifierConstant() as i32;
+            arg = (self.identifierConstant(false)).0 as i32;
             getOp = OpCode::OP_GET_GLOBAL;
             setOp= OpCode::OP_SET_GLOBAL;
         }
@@ -644,11 +765,11 @@ impl<'a> Compiler<'a> {
     }
 
     fn emitByte(&mut self,byte: u8) {
-        self.chunk.write(byte,self.parser.previous.line)
+        self.vm.functionChunks[self.currentFunction.chunkIndex as usize].write(byte, self.parser.previous.line)
     }
 
     fn emitOpcode(&mut self, opCode : OpCode) {
-        self.chunk.write(opCode.to_u8(),self.parser.previous.line)
+        self.vm.functionChunks[self.currentFunction.chunkIndex as usize].write(opCode.to_u8(), self.parser.previous.line)
     }
 
     fn parsePrecedence(&mut self, precedence : Precedence) {
@@ -687,7 +808,7 @@ impl<'a> Compiler<'a> {
 
         }
     }
-    pub fn end(&mut self) {
+    pub fn end(&mut self) -> ObjFunction {
         #[cfg(feature = "debug_trace_execution")]
             {
                 // for (i, code) in self.chunk.code.iter().enumerate() {
@@ -695,10 +816,28 @@ impl<'a> Compiler<'a> {
                 //     println!("index: {}, code: {:?}", i, opcodeOpt)
                 // }
                 if(!self.parser.hadError){
-                    self.chunk.disassemble("code");
+                    //println!("current function {:?}",&self.currentFunction);
+                    let funcName = if self.currentFunction.name.is_empty() {
+                        "<script>"
+                    } else {
+                        self.currentFunction.name.as_str()
+                    };
+                   self.vm.functionChunks[self.currentFunction.chunkIndex as usize].disassemble(funcName);
                 }
             }
-        self.emitReturn()
+        self.emitReturn();
+
+        //self.currentState = self.previousState;
+
+        // if(self.currentState > 1) {
+        //     self.currentState -= 1;
+        // }
+       let toBeReturned =  self.currentFunction;
+       // self.currentFunction.chunkIndex as usize = self.previousFunction.chunkIndex as usize;
+        self.currentFunction = self.previousFunction;
+//        self.currentFunction.chunkIndex as usize = self.previousFunction.chunkIndex as usize;
+
+        toBeReturned
 
     }
     fn grouping(&mut self, chunk : &mut Chunk) {
@@ -707,7 +846,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn makeConstant(&mut self, value : Value) -> u8 {
-        let constantIndex =  self.chunk.addConstant(value);
+        let constantIndex =  self.vm.functionChunks[self.currentFunction.chunkIndex as usize].addConstant(value);
         if(constantIndex > u8::MAX as u32) {
             self.error("Too many constants in one chunk.");
              0
@@ -727,7 +866,7 @@ impl<'a> Compiler<'a> {
 
 
     pub fn emitReturn(&mut self) {
-        self.chunk.write(OP_RETURN.to_u8(),self.parser.previous.line)
+        self.vm.functionChunks[self.currentFunction.chunkIndex as usize].write(OP_RETURN.to_u8(), self.parser.previous.line)
     }
 
     pub fn expression(&mut self) {
@@ -760,21 +899,6 @@ impl<'a> Compiler<'a> {
         self.errorAt(self.parser.previous,message);
     }
     fn errorAt(&mut self, token: Token<'a>, message: &str) {
-        ///static void errorAt(Token* token, const char* message) {
-        //   fprintf(stderr, "[line %d] Error", token->line);
-        //
-        //   if (token->type == TOKEN_EOF) {
-        //     fprintf(stderr, " at end");
-        //   } else if (token->type == TOKEN_ERROR) {
-        //     // Nothing.
-        //   } else {
-        //     fprintf(stderr, " at '%.*s'", token->length, token->start);
-        //   }
-        //
-        //   fprintf(stderr, ": %s\n", message);
-        //   parser.hadError = true;
-        // }
-
         if (self.parser.panicMode) {
             return;
         }
@@ -801,18 +925,41 @@ impl<'a> Compiler<'a> {
     fn setScanner(&mut self) {
         self.scanner = Scanner::new(&self.source)
     }
-    pub fn new(sourcer: &'a [u8], chunk : &'a mut Chunk, vm : &'a mut VM) -> Self {
-        Self {
+    pub fn new(sourcer: &'a [u8], vm : &'a mut VM) -> Self {
+
+        // Local* local = &current->locals[current->localCount++];
+        //   local->depth = 0;
+        //   local->name.start = "";
+        //   local->name.length = 0;
+
+        // let localCount = 0;
+        // let mut locals = [Local::empty(); u8::MAX as usize];
+        // let local = &mut locals[localCount];
+        //
+        // local.depth = 0;
+        // local.
+
+        let mut compiler = Self {
             source: sourcer,
             parser: Parser::new(),
             scanner: Scanner::empty(),
-            chunk,
+            //currentChunk: 0,
+            currentFunction: ObjFunction::new(),
+            functionType: FunctionType::SCRIPT,
             parseRules : ParseRule::rules(), // store default on the compiler
             vm,
-            locals : [Local::empty(); u8::MAX as usize],
-            localCount:0,
-            scopeDepth:0
-        }
+            state: [CompilerState::new(); u8::MAX as usize],
+//            currentState: 0,
+            //previousState:0,
+            //nextAvailableStateIndex:0,
+            previousFunction: ObjFunction::new()
+        };
+        
+        let initState = &mut compiler.state[0];
+        initState.localCount = 1;
+        compiler.currentFunction.chunkIndex = 0;
+        
+        compiler
     }
 
 }

@@ -16,6 +16,7 @@ use std::borrow::Cow;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
 use std::str::Split;
 use compiler::*;
 use value::*;
@@ -25,9 +26,27 @@ use vm::*;
 
 fn main() {
 
+    /**
+     var i = 2;
 
+    {
+    var a = 3;
+    print a;
+    {
+    var b= 2;
+    print b;
+    }
+    }
 
+    fun sam(){
+    0;
+    }
 
+    fun git(){
+    var a = 3;
+    }
+
+     */
 
     // let mut map = Table::new();
     //

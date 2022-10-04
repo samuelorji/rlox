@@ -117,6 +117,12 @@ pub struct Chunk {
      pub lines : Vec<usize>
 }
 
+impl Clone for Chunk {
+    fn clone(&self) -> Self {
+        Chunk::new()
+    }
+}
+
 impl Chunk {
     pub fn new() -> Self {
         Self {
@@ -148,6 +154,7 @@ impl Chunk {
 
             //self.disassemble("test");
        // }
+       // println!("code length is {}, index is {}",&self.code.len(), &index);
         self.code[index]
     }
 
