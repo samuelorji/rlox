@@ -2,10 +2,38 @@ use std::alloc;
 use std::ptr;
 use std::alloc::Layout;
 use std::fmt::{Debug, Formatter};
+use crate::Chunk;
 
-#[derive(Copy,Clone,PartialEq)]
+#[derive(Copy, Clone,PartialEq)]
 pub enum Obj {
     STRING(ObjString),
+    FUNCTION(ObjFunction)
+
+}
+
+#[derive(Copy, Clone,PartialEq,Debug)]
+pub struct ObjFunction {
+    pub arity: u32,
+    pub chunkIndex : i32,
+    pub name : ObjString
+}
+
+
+impl ObjFunction {
+    pub fn new() -> Self {
+        Self {
+            arity:0,
+            chunkIndex: -1,
+            name: ObjString::empty()
+        }
+    }
+
+    pub fn as_String(&self) -> String {
+        format!("<fn {:?}>", &self.name)
+
+    }
+
+
 }
 
 pub struct ObjString {
@@ -161,6 +189,9 @@ impl Debug for Obj {
                // f.write_str(unsafe{ std::str::from_utf8(std::slice::from_raw_parts(*ptr, *length)).expect("cannot parse string") })
                 f.write_str(string.as_str())
             }
+            Obj::FUNCTION(function @ObjFunction { ..}) => {
+                f.write_str(function.name.as_str())
+            }
         }
     }
 }
@@ -170,6 +201,9 @@ impl Obj {
         match self {
             Obj::STRING(string @ ObjString { .. }) => {
                 string.free()
+            }
+            Obj::FUNCTION(function @ObjFunction { ..}) => {
+                function.name.free();
             }
         }
     }

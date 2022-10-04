@@ -3,6 +3,7 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use crate::object::*;
 
+#[derive(Debug)]
 pub struct ValueArray {
      pub values : Vec<Value>
 }
@@ -69,6 +70,14 @@ impl Debug for Value {
                     Obj::STRING(string @ObjString {.. }) => {
                         f.write_str(&string.as_str())
                     }
+                    Obj::FUNCTION(function @ ObjFunction {..}) => {
+                        let funcName = if function.name.is_empty() {
+                            "<script>".to_string()
+                        } else {
+                            function.as_String()
+                        };
+                        f.write_str(&funcName)
+                    }
                 }
             }
 
@@ -110,10 +119,19 @@ impl Value {
 
     pub fn as_obj_string(self) -> ObjString {
         match self {
-            Value::OBJ(Obj::STRING(obj @ ObjString { length, ptr, hash, is_clone })) => {
+            Value::OBJ(Obj::STRING(obj @ ObjString { .. })) => {
                 obj
             },
             x => panic!("{:?} is not an obj string",x)
+        }
+    }
+
+    pub fn as_function(self) -> ObjFunction {
+        match self {
+            Value::OBJ(Obj::FUNCTION(func @ ObjFunction { .. })) => {
+                func
+            },
+            x => panic!("{:?} is not an function string",x)
         }
     }
 
