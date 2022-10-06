@@ -1,5 +1,5 @@
-var i = 2;
-
-for (; i< 4; i = i+1){
-print i;
+var b = 1;
+while (b < 5) {
+print ("b is " + b);
+b = b+1;
 }

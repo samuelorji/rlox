@@ -422,7 +422,6 @@ impl<'a> Compiler<'a> {
             // first, we emit an unconditional jump that hops over the increment clause’s code to the body of the loop.
             let bodyJump = self.emitJump(OP_JUMP);
             let incrementStart = self.chunk.code.len();
-            println!("increment start is {}",&incrementStart);
             self.expression(); // put condition on stack
             self.emitOpcode(OP_POP); // pop of the value afterwards
 
