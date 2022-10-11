@@ -1,6 +1,6 @@
 //pub type Value = f32;
 use std::any::Any;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Formatter, Write};
 use crate::object::*;
 
 #[derive(Debug)]
@@ -50,6 +50,7 @@ impl ValueArray {
 pub enum Value {
     Bool(bool),
     Number(f64),
+    BigNumber(usize),
     OBJ(Obj),
     Empty
 }
@@ -65,6 +66,7 @@ impl Debug for Value {
                 let rep = format!("{}",r);
                 f.write_str(&rep)
             }
+
             Value::OBJ(obj) => {
                 match obj {
                     Obj::STRING(string @ObjString {.. }) => {
@@ -78,10 +80,18 @@ impl Debug for Value {
                         };
                         f.write_str(&funcName)
                     }
+                    Obj::NATIVE_FUNCTION(native @NativeFunction{..}) => {
+                        f.write_str("<native fn>")
+                    }
+
+
                 }
             }
 
-            Value::Empty => f.write_str("null")
+            Value::Empty => f.write_str("null"),
+            Value::BigNumber(num) => {
+                f.write_str(&num.to_string())
+            }
         }
     }
 }
@@ -90,6 +100,9 @@ impl Value {
 
     pub fn bool_value(value : bool) -> Self {
         Value::Bool(value)
+    }
+    pub fn native_fn(name :ObjString) -> Self {
+        Value::OBJ(Obj::NATIVE_FUNCTION(NativeFunction::new(name)))
     }
 
     pub fn soft_clone(&self) -> Self {
@@ -104,6 +117,10 @@ impl Value {
     }
     pub fn number_value(number : f64) -> Self {
         Value::Number(number)
+    }
+
+    pub fn big_number(value : usize) -> Self {
+        Value::BigNumber(value)
     }
 
     pub fn obj_value(obj : Obj) -> Self {

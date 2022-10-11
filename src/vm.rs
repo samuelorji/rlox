@@ -10,10 +10,10 @@ use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 /// like an integer index because it’s faster to dereference a pointer than look up an element in an array by index
 
 
-const FRAME_MAX: u8 = 64;
-const STACK_MAX: usize = (FRAME_MAX as usize * u8::MAX as usize);
+const FRAMES_MAX: u8 = 64;
+const STACK_MAX: usize = (FRAMES_MAX as usize * u8::MAX as usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct CallFrame {
     function: ObjFunction,
     ip: usize,
@@ -31,9 +31,8 @@ impl CallFrame {
 }
 
 pub struct VM {
-    frames: [CallFrame; FRAME_MAX as usize],
+    frames: [CallFrame; FRAMES_MAX as usize],
     frameCount: usize,
-    // ip: usize, // store as index into array
     stack: Vec<Value>,
     currentChunk: *mut Chunk,
     currentFrame: *mut CallFrame,
@@ -67,8 +66,8 @@ impl VM {
     }
 
     pub fn new() -> Self {
-        Self {
-            frames: [CallFrame::new(); FRAME_MAX as usize],
+       let mut vm=  Self {
+            frames: [CallFrame::new(); FRAMES_MAX as usize],
             frameCount: 0,
             stack: Vec::new(),
             currentChunk: ptr::null_mut(),
@@ -77,25 +76,25 @@ impl VM {
             globals: Table::new(),
             strings: Table::new(),
             functionChunks: vec![],
-        }
+        };
+
+        let clock = ObjString::from_str("clock");
+        let clockClone = clock.clone();
+        vm.strings.set(clock, Value::empty());
+        vm.define_native(clockClone);
+        vm
+    }
+
+    fn define_native(&mut self, name : ObjString){
+        let native_fn = Value::native_fn(name);
+        self.globals.set(name, native_fn);
+
     }
 
 
     pub fn interpret(&mut self, source: Vec<u8>) -> InterpretResult {
-        // ObjFunction* function = compile(source);
-        //   if (function == NULL) return INTERPRET_COMPILE_ERROR;
-        //
-        //   push(OBJ_VAL(function));
-        //   CallFrame* frame = &vm.frames[vm.frameCount++];
-        //   frame->function = function;
-        //   frame->ip = function->chunk.code;
-        //   frame->slots = vm.stack;
-
-
         let mut chunk = Chunk::new();
         self.functionChunks.push(chunk);
-        let funcChunk = &mut self.functionChunks[0];
-        let funcChunkPointer = funcChunk as *mut Chunk;
         let mut compiler = Compiler::new(&source, self);
         let compile_result = compiler.compile();
 
@@ -103,18 +102,12 @@ impl VM {
             None => return INTERPRET_COMPILE_ERROR,
             Some(function) => {
                 self.stack.push(Value::obj_value(Obj::FUNCTION(function)));
-                let callframe = &mut self.frames[self.frameCount];
-
-                self.currentChunk = funcChunkPointer;
-                callframe.ip = 0;
-                callframe.slot = 0;
-
-                self.currentFrame = callframe as *mut CallFrame;
-
+                self.call(function, 0);
                 self.run()
+                //InterpretResult::INTERPRET_OK
             }
         }
-       // InterpretResult::INTERPRET_OK
+
         //
         // let result =  if(!compiler.compile()){
         //
@@ -147,8 +140,7 @@ impl VM {
                         print!(" ]");
                     }
                     print!("\n");
-
-                    unsafe { (*chunk).disassembleInstruction(self.frames[self.frameCount].ip) };
+                    unsafe { (*chunk).disassembleInstruction((*self.currentFrame).ip) };
                 }
             match self.readOpCode() {
                 OpCode::OP_CONSTANT => {
@@ -156,23 +148,47 @@ impl VM {
                     self.stack.push(constant);
                 }
                 OpCode::OP_RETURN => {
-                    if (self.stack.is_empty()) {
-                        return InterpretResult::INTERPRET_OK;
+                    // Value result = pop();
+                    //         vm.frameCount--;
+                    //         if (vm.frameCount == 0) {
+                    //           pop();
+                    //           return INTERPRET_OK;
+                    //         }
+                    //
+                    //         vm.stackTop = frame->slots;
+                    //         push(result);
+                    //         frame = &vm.frames[vm.frameCount - 1];
+                    //         break;
+                    unsafe {
+                        //println!("return called");
+
+                        let functionReturnResult = self.pop_stack();
+                        self.frameCount -= 1;
+                        if (self.frameCount == 0) {
+                            // at this point we have the <script> on the stack, so
+                            // pop that and end
+                            self.pop_stack();
+                            return InterpretResult::INTERPRET_OK;
+                        }
+
+                        self.stack.resize((*self.currentFrame).slot, Value::empty());
+                        self.stack.push(functionReturnResult);
+                        self.currentFrame = &mut self.frames[self.frameCount - 1];
+                        let currentFunctionIndex = (*self.currentFrame).function.chunkIndex as usize;
+                        self.currentChunk = &mut self.functionChunks[currentFunctionIndex];
+                        //println!("current frame: {:?}",(*self.currentFrame));
+                        //return InterpretResult::INTERPRET_OK;
                     }
-                    let value = self.pop_stack();
-                    self.objects.push(value);
-                    return InterpretResult::INTERPRET_OK;
                 }
                 OpCode::OP_NEGATE => {
                     let peeked = self.peek(0);
-                    println!("peeked is {:?}", &peeked);
                     match &peeked {
                         Value::Number(r) => {
                             let number_on_stack = self.pop_stack().as_number();
                             self.stack.push(Value::number_value(-number_on_stack));
                         }
                         _ => {
-                            self.runtime_error("Operand must be a number.", self.get_line_number());
+                            self.runtime_error("Operand must be a number.");
                             return InterpretResult::INTERPRET_RUNTIME_ERROR;
                         }
                     }
@@ -223,7 +239,7 @@ impl VM {
                     let variable_name = constant.as_obj_string();
                     match self.globals.get(&variable_name) {
                         None => {
-                            self.runtime_error(&format!("Undefined variable '{:?}'.", &variable_name), self.get_line_number());
+                            self.runtime_error(&format!("Undefined variable '{:?}'.", &variable_name));
                             return InterpretResult::INTERPRET_RUNTIME_ERROR;
                         }
                         Some(value) => {
@@ -240,7 +256,7 @@ impl VM {
                     let cloned_name = name.clone();
                     if (self.globals.set(name, self.peek(0).clone())) {
                         self.globals.remove(&cloned_name);
-                        self.runtime_error(&format!("Undefined variable '{:?}'.", &cloned_name), self.get_line_number());
+                        self.runtime_error(&format!("Undefined variable '{:?}'.", &cloned_name));
                         return InterpretResult::INTERPRET_RUNTIME_ERROR;
                     }
                 }
@@ -286,8 +302,79 @@ impl VM {
                     let jump = self.read_16_bit_short();
                     unsafe { (*self.currentFrame).ip -= jump as usize }
                 }
+
+                OpCode::OP_CALL => {
+                    let argCount = self.readByte();
+                    // from the stacks perspective, the callee is arg count down from the top of the stack
+                    // as the callee piles the arguments on top
+                    let callee = self.peek(argCount as usize).clone();
+                    if (!self.callValue(callee, argCount)) {
+                        return InterpretResult::INTERPRET_RUNTIME_ERROR;
+                    }
+                    self.currentFrame = &mut self.frames[self.frameCount - 1];
+                }
             }
         }
+    }
+
+    fn callValue(&mut self, callee: Value, argCount: u8) -> bool {
+        // case OBJ_NATIVE: {
+        //         NativeFn native = AS_NATIVE(callee);
+        //         Value result = native(argCount, vm.stackTop - argCount);
+        //         vm.stackTop -= argCount + 1;
+        //         push(result);
+        //         return true;
+        //       }
+        match callee {
+            Value::OBJ(Obj::FUNCTION(function @ ObjFunction { .. })) => {
+                self.call(function, argCount)
+            }
+
+            Value::OBJ(Obj::NATIVE_FUNCTION(native @ NativeFunction { .. })) => {
+                if(argCount !=0){
+                    self.runtime_error("native function takes only 0 arguments")
+                }
+
+               match native.name.as_str(){
+                   "clock" =>  {
+                       let result = native.clock();
+                       self.stack.push(result);
+                       true
+                   },
+                   n => {
+                       self.runtime_error(&format!("Unknown native function {}", n));
+                       false
+                   }
+               }
+            }
+
+
+            _ => {
+                self.runtime_error("Can only call functions and classes ");
+                false
+            }
+        }
+    }
+
+    fn call(&mut self, function: ObjFunction, argCount: u8) -> bool {
+        if (argCount != function.arity) {
+            self.runtime_error(&format!("Expected {} arguments, but got {}", function.arity, argCount));
+            return false;
+        }
+
+        if (self.frameCount == FRAMES_MAX as usize) {
+            self.runtime_error("Stack overflow.");
+            return false;
+        }
+
+        let mut frame = &mut self.frames[self.frameCount];
+        self.currentChunk = &mut self.functionChunks[function.chunkIndex as usize];
+        frame.function = function;
+        frame.ip = 0;
+        frame.slot = self.stack.len() - 1 - (argCount as usize); // the slot for this frame is stack top - arg count - 1 (saved slot for function)
+        self.currentFrame = frame as *mut CallFrame;
+        self.frameCount += 1;
+        true
     }
 
     fn pop_stack(&mut self) -> Value {
@@ -299,13 +386,6 @@ impl VM {
             Value::Bool(boolean) => !boolean,
             _ => true
         }
-    }
-    fn get_line_number(&self) -> usize {
-        let chunk = self.currentChunk;
-        // let instruction = chunk.code[self.ip];
-        //  //chunk.lines[instruction as usize - 1]
-        //  chunk.lines[0]
-        0
     }
 
     fn read_16_bit_short(&mut self) -> u16 {
@@ -369,6 +449,20 @@ impl VM {
                     Err(b) => self.stack.push(Value::bool_value(b)),
                 }
             }
+            (Value::BigNumber(a), Value::BigNumber(b)) => {
+                let result: Result<usize, bool> = match binaryOp { // result not the best thing, but helps keep code DRY
+                    BinaryOp::ADD => Ok(a + b),
+                    BinaryOp::SUBTRACT => Ok(a - b),
+                    BinaryOp::DIVIDE => Ok(a / b),
+                    BinaryOp::MULTIPLY => Ok(a * b),
+                    BinaryOp::GREATER => Err(a > b),
+                    BinaryOp::LESS => Err(a < b),
+                };
+                match result {
+                    Ok(r) => self.stack.push(Value::big_number(r)),
+                    Err(b) => self.stack.push(Value::bool_value(b)),
+                }
+            }
             (Value::OBJ(Obj::STRING(first @ ObjString { length, ptr, .. })), Value::OBJ(Obj::STRING(second @ ObjString { length: la, ptr: ptrB, .. }))) => {
                 unsafe {
                     let str1 = std::slice::from_raw_parts(ptr, length);
@@ -393,23 +487,30 @@ impl VM {
                     let cloned_result = result.clone();
                     self.strings.set(result, Value::nil_value());
                     self.stack.push(Value::obj_value(Obj::STRING(cloned_result)));
-                    // self.objects.push(_a);
+                }
+            }
+            (Value::OBJ(Obj::STRING(first @ ObjString { length, ptr, .. })), Value::BigNumber(a)) => {
+                unsafe {
+                    let str1 = std::slice::from_raw_parts(ptr, length);
+                    let b = format!("{}", a);
+                    let result = ObjString::concat_buffers(str1, b.as_bytes());
+                    let cloned_result = result.clone();
+                    self.strings.set(result, Value::nil_value());
+                    self.stack.push(Value::obj_value(Obj::STRING(cloned_result)));
                 }
             }
 
             (Value::Number(a), Value::OBJ(Obj::STRING(ObjString { .. }))) => {
-                self.runtime_error("Cannot concatenate a number and string", self.get_line_number());
-                //self.objects.push(_a);
+                self.runtime_error("Cannot concatenate a number and string");
+
             }
             _ => {
-                self.runtime_error("Operands must be two numbers or two strings", self.get_line_number());
-                //self.objects.push(_a);
-                //self.objects.push(_b);
+                self.runtime_error("Operands must be two numbers or two strings");
             }
         }
     }
 
-    fn runtime_error(&mut self, msg: &str, line: usize) {
+    fn runtime_error(&mut self, msg: &str) {
         /**
          static void runtimeError(const char* format, ...) {
           va_list args;
@@ -424,9 +525,26 @@ impl VM {
           resetStack();
         }
          */
-
         eprintln!("{}", msg);
-        eprint!("[line {}] in script", line);
+        let mut i = self.frameCount - 1;
+
+        while (i > 0) {
+            let currentFrame = &self.frames[i];
+            let currentfunctionChunk = &self.functionChunks[currentFrame.function.chunkIndex as usize];
+
+            // println!("{:?}",currentfunction);
+            let line_number = (*currentfunctionChunk).lines[currentFrame.ip];
+
+            let function_name = if (currentFrame.function.name.is_empty()) {
+                "<script>"
+            } else {
+                currentFrame.function.name.as_str()
+            };
+
+            eprintln!("[line {}] in {}", line_number, function_name);
+            i -= 1;
+        }
+
         self.resetStack()
     }
 }

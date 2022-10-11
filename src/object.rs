@@ -1,21 +1,55 @@
 use std::alloc;
 use std::ptr;
 use std::alloc::Layout;
+use std::any::Any;
 use std::fmt::{Debug, Formatter};
-use crate::Chunk;
+use std::time::{SystemTime, UNIX_EPOCH};
+use crate::{Chunk, FunctionType, Value};
 
 #[derive(Copy, Clone,PartialEq)]
 pub enum Obj {
     STRING(ObjString),
-    FUNCTION(ObjFunction)
+    FUNCTION(ObjFunction),
+    NATIVE_FUNCTION(NativeFunction)
 
 }
 
-#[derive(Copy, Clone,PartialEq,Debug)]
+#[derive(Copy, Clone,PartialEq)]
 pub struct ObjFunction {
-    pub arity: u32,
+    pub arity: u8,
     pub chunkIndex : i32,
+    pub name : ObjString,
+    pub functionType: FunctionType
+}
+
+#[derive(Copy,Clone,PartialEq)]
+pub struct NativeFunction{
     pub name : ObjString
+}
+
+impl NativeFunction {
+    pub fn new(name :ObjString) -> Self {
+        Self {
+            name
+        }
+    }
+    pub fn clock(&self) -> Value {
+        Value::big_number( SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as usize)
+    }
+}
+
+impl Debug for ObjFunction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let name  = if(self.name.is_empty()){
+            "<script>"
+        } else {
+            self.name.as_str()
+        };
+        write!(f, "{{ name : {} , arity : {} }}",name,self.arity)
+    }
 }
 
 
@@ -24,7 +58,8 @@ impl ObjFunction {
         Self {
             arity:0,
             chunkIndex: -1,
-            name: ObjString::empty()
+            name: ObjString::empty(),
+            functionType: FunctionType::SCRIPT
         }
     }
 
@@ -192,6 +227,9 @@ impl Debug for Obj {
             Obj::FUNCTION(function @ObjFunction { ..}) => {
                 f.write_str(function.name.as_str())
             }
+            Obj::NATIVE_FUNCTION(native @ NativeFunction{.. }) => {
+                f.write_str("<native fn>")
+            }
         }
     }
 }
@@ -204,6 +242,10 @@ impl Obj {
             }
             Obj::FUNCTION(function @ObjFunction { ..}) => {
                 function.name.free();
+            }
+            Obj::NATIVE_FUNCTION(native @ NativeFunction{ .. }) => {
+                native.name.free()
+
             }
         }
     }

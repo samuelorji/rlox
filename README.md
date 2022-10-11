@@ -81,4 +81,36 @@ b is 3
 b is 4
 ```
 
+### Functions
+```python
+fun adder(a,b) {
+ return a + b;
+}
+
+fun multiplier (a,b) {
+ return a * b ;
+}
+
+print adder(3,4) + multiplier(3,4);
+```
+result:
+```bash
+19
+```
+
+Function recursion:
+```python
+fun fib(n) {
+  if (n < 2) return n;
+  return fib(n - 2) + fib(n - 1);
+}
+
+var start = clock();
+print fib(35);
+print clock() - start;
+```
+result:
+```bash
+9227465
+```
 ## Compiler Internals

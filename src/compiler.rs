@@ -5,7 +5,7 @@ use std::fmt::format;
 use crate::scanner::*;
 use crate::{Chunk, ObjFunction, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
-use crate::OpCode::{OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
+use crate::OpCode::{OP_CALL, OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
 use crate::scanner::TokenType::*;
 
 
@@ -89,7 +89,7 @@ impl ParseRule {
         // example, this is invalid "/4" , but this is valid "-4", which explains why
         // slash '/' has no prefix rule because it cannot be used as a prefix, but minus '-' has because it can
        let mut rules =  vec![ParseRule::new(); TokenType::elements_len() as usize]; // create rules with default values
-        rules[TokenType::LEFT_PAREN.as_usize()] =  createParseRule( Some(grouping),None,Precedence::NONE);
+        rules[TokenType::LEFT_PAREN.as_usize()] =  createParseRule( Some(grouping),Some(call),Precedence::CALL);
         rules[TokenType::MINUS.as_usize()] =  createParseRule( Some(unary),Some(binary),Precedence::TERM);
         rules[TokenType::PLUS.as_usize()] =  createParseRule( None,Some(binary),Precedence::TERM);
         rules[TokenType::SLASH.as_usize()] =  createParseRule( None,Some(binary),Precedence::FACTOR);
@@ -144,7 +144,8 @@ impl<'a> Parser<'a> {
 }
 
 
- enum FunctionType {
+#[derive(PartialEq,Copy, Clone)]
+ pub enum FunctionType {
     FUNCTION,
     SCRIPT
 }
@@ -173,18 +174,12 @@ pub struct Compiler<'a> {
     source: &'a [u8],
     parser: Parser<'a>,
     scanner: Scanner<'a>,
-    //currentChunk: usize,
     currentFunction: ObjFunction,
-    functionType: FunctionType,
     parseRules : Vec<ParseRule>,
     vm: &'a mut VM,
     state: [CompilerState<'a>; u8::MAX as usize],
-    //currentState: usize,
-   //previousState:usize,
-    //nextAvailableStateIndex: usize,
     previousFunction: ObjFunction
 }
-
 
 
 pub fn compiled(source : Vec<u8>) {
@@ -264,53 +259,78 @@ impl<'a> Compiler<'a> {
 
 
     fn function(&mut self, functionType : FunctionType, functionName : ObjString) {
-
-        // Compiler compiler;
-        // initCompiler(&compiler, type);
         // save previous state here before
 
-        self.createFunctionState(functionName);
+        self.createFunctionState( functionName,functionType);
 
         self.beginScope();
 
         self.consume(LEFT_PAREN, "Expect '(' after function name.");
-        self.consume(RIGHT_PAREN, "Expect ')' after parameters.");
+
+
+        if(!self.check_current_type(RIGHT_PAREN)){
+            // then we have function args
+            self.parse_argument();
+            while(self.match_type(COMMA)) {
+                self.parse_argument()
+            }
+        }
+
+        self.consume(RIGHT_PAREN, "Expect ')' after function name.");
         self.consume(LEFT_BRACE, "Expect '{' before function body.");
-
-
         self.block();
+        // all functions have an implicit OP_NIL + OP_RETURN at the end
+        // in the case where the function explicitly contains a return statement, though the function contains
+        // an OP_NIL and OP_RETURN at the end, it is short circuited by the OP_RETURN that the return statement
+        // will put in the chunk such that the implicit one won't be reached
 
         let function = self.end();
-        // println!("current chunk is {}",self.currentFunction.chunkIndex as usize);
-        // self.vm.functionChunks[self.currentFunction.chunkIndex as usize].disassemble("test");
         let constantIndex = self.makeConstant(Value::obj_value(Obj::FUNCTION(function)));
 
         self.emitBytes(OP_CONSTANT.to_u8(),constantIndex );
 
 
     }
+
+    fn parse_argument(&mut self){
+        self.currentFunction.arity+=1;
+        if(self.currentFunction.arity > 255) {
+            self.errorAtCurrent("Can't have more than 255 parameters");
+        }
+        let constant = (self.parse_variable("Expect Parameter name", false)).0;
+        self.define_variable(constant);
+    }
     
-    fn createFunctionState(&mut self, functionName : ObjString) {
+    fn createFunctionState(&mut self, functionName : ObjString,functionType : FunctionType) {
         let newChunk = Chunk::new();
         let chunkIndex = self.vm.functionChunks.len();
-        //println!("chunk index {}",self.vm.functionChunks.len());
-        //self.previousChunk= self.currentFunction.chunkIndex as usize;
         self.previousFunction = self.currentFunction;
-        // self.nextAvailableStateIndex = self.currentState+1;
-        // self.currentState = self.nextAvailableStateIndex;
-        
-//        self.currentFunction.chunkIndex as usize  = chunkIndex;
         self.vm.functionChunks.push(newChunk);
 
         self.currentFunction = ObjFunction {
-            arity: 0,
+            arity: 0, // arity will be set when parsing the argument list
             chunkIndex: chunkIndex as i32,
-            name: functionName
+            name: functionName,
+            functionType
         };
+    }
 
-        
-        
-
+    fn argumentList(&mut self) -> u8 {
+        let mut argsCount : u8 = 0;
+        // check that next token is not a right parent which means it's empty function args
+        if(!self.check_current_type(RIGHT_PAREN)) {
+            self.expression();
+            argsCount+=1;
+            while(self.match_type(COMMA)){
+                self.expression();
+                if(argsCount == 255) {
+                    self.error("Can't have more than 255 arguments.")
+                }
+                argsCount+=1;
+            }
+        }
+        self.consume(RIGHT_PAREN, "Expect a ')' after function arguments");
+        argsCount
     }
     fn varDeclaration(&mut self) {
         // parses the variable name, stores in constant pool and retrieves the index
@@ -404,14 +424,8 @@ impl<'a> Compiler<'a> {
         // when declaring the variable, we set the depth of the local to be -1,
         // here we set it to the right scope depth
 
-        //self.locals[(self.localCount - 1) as usize].depth = self.scopeDepth;
-
-       //  let currentScopeDepth = self.state[self.currentFunction.chunkIndex as usize].scopeDepth;
-       //  let currentLocalCount = self.state[self.currentFunction.chunkIndex as usize].localCount;
-       //
-       //  println!("scope depth {}, localCount : {}, currentState is {}", &currentScopeDepth, currentLocalCount,self.currentState);
-       // // self.state[self.currentFunction.chunkIndex as usize].locals[(currentLocalCount - 1) as usize].depth = currentScopeDepth;
-        self.state[self.currentFunction.chunkIndex as usize].locals[(self.state[self.currentFunction.chunkIndex as usize].localCount - 1) as usize].depth = self.state[self.currentFunction.chunkIndex as usize].scopeDepth;
+        let currentFunctionIndex = self.currentFunction.chunkIndex;
+        self.state[currentFunctionIndex as usize].locals[(self.state[currentFunctionIndex as usize].localCount - 1) as usize].depth = self.state[currentFunctionIndex as usize].scopeDepth;
 
     }
 
@@ -461,6 +475,8 @@ impl<'a> Compiler<'a> {
     fn statement(&mut self) {
         if(self.match_type(PRINT)){
             self.print_statement()
+        }else if (self.match_type(RETURN)) {
+            self.return_statement()
         }else if (self.match_type(WHILE)){
             self.while_statement()
         } else if (self.match_type(FOR)){
@@ -507,10 +523,23 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn return_statement(&mut self) {
+        if(self.currentFunction.functionType == FunctionType::SCRIPT) {
+            self.error("Cannot return from top level code");
+        }
+
+        if(self.match_type(SEMICOLON)){
+            self.emitReturn()
+        } else {
+            self.expression();
+            self.consume(SEMICOLON, "Expect ':' after return value");
+            self.emitOpcode(OP_RETURN);
+        }
+    }
+
     fn for_statement(&mut self) {
         self.beginScope();
         self.consume(LEFT_PAREN, "Expect '(' after 'for'.");
-       // self.consume(SEMICOLON, "Expect ';'.");
 
         // initialization clause:
 
@@ -746,8 +775,6 @@ impl<'a> Compiler<'a> {
             //name = "samuel"
             self.expression(); // parse expression on the right hand and place on stack
             self.emitBytes(setOp.to_u8(),index);
-
-
         } else {
             self.emitBytes(getOp.to_u8(), index);
         }
@@ -821,15 +848,11 @@ impl<'a> Compiler<'a> {
                         self.currentFunction.name.as_str()
                     };
                    self.vm.functionChunks[self.currentFunction.chunkIndex as usize].disassemble(funcName);
+
                 }
             }
         self.emitReturn();
 
-        //self.currentState = self.previousState;
-
-        // if(self.currentState > 1) {
-        //     self.currentState -= 1;
-        // }
        let toBeReturned =  self.currentFunction;
        // self.currentFunction.chunkIndex as usize = self.previousFunction.chunkIndex as usize;
         self.currentFunction = self.previousFunction;
@@ -864,7 +887,8 @@ impl<'a> Compiler<'a> {
 
 
     pub fn emitReturn(&mut self) {
-        self.vm.functionChunks[self.currentFunction.chunkIndex as usize].write(OP_RETURN.to_u8(), self.parser.previous.line)
+        self.vm.functionChunks[self.currentFunction.chunkIndex as usize].write(OP_NIL.to_u8(), self.parser.previous.line);
+        self.vm.functionChunks[self.currentFunction.chunkIndex as usize].write(OP_RETURN.to_u8(), self.parser.previous.line);
     }
 
     pub fn expression(&mut self) {
@@ -943,7 +967,6 @@ impl<'a> Compiler<'a> {
             scanner: Scanner::empty(),
             //currentChunk: 0,
             currentFunction: ObjFunction::new(),
-            functionType: FunctionType::SCRIPT,
             parseRules : ParseRule::rules(), // store default on the compiler
             vm,
             state: [CompilerState::new(); u8::MAX as usize],
@@ -1047,6 +1070,11 @@ fn variable<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
     compiler.named_variable(canAssign)
 }
 
+fn call<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
+
+    let argCount = compiler.argumentList();
+    compiler.emitBytes(OP_CALL.to_u8(), argCount);
+}
 fn number<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
     //println!("{}",std::str::from_utf8(compiler.parser.previous.start).unwrap());
     let value : Value = Value::number_value(f64::from_str(compiler.parser.previous.lexeme()).unwrap());

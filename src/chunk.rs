@@ -28,7 +28,8 @@ pub enum OpCode {
     OP_SET_LOCAL,
     OP_JUMP_IF_FALSE,
     OP_JUMP,
-    OP_LOOP
+    OP_LOOP,
+    OP_CALL
 
 }
 
@@ -61,6 +62,7 @@ impl From<u8> for OpCode{
             21 => OpCode::OP_JUMP_IF_FALSE,
             22 => OpCode::OP_JUMP,
             23 => OpCode::OP_LOOP,
+            24 => OpCode::OP_CALL,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -151,10 +153,6 @@ impl Chunk {
     }
 
     pub fn read(&self, index : usize) -> u8 {
-
-            //self.disassemble("test");
-       // }
-       // println!("code length is {}, index is {}",&self.code.len(), &index);
         self.code[index]
     }
 
@@ -220,7 +218,9 @@ impl Chunk {
             OpCode::OP_JUMP_IF_FALSE =>  self.jumpInstruction("OP_JUMP_IF_FALSE", 1,offset),
             OpCode::OP_JUMP => self.jumpInstruction("OP_JUMP", 1,offset),
 
-            OpCode::OP_LOOP => self.jumpInstruction("OP_LOOP", -1, offset)
+            OpCode::OP_LOOP => self.jumpInstruction("OP_LOOP", -1, offset),
+
+            OpCode::OP_CALL => self.byteInstruction("OP_CALL", offset),
         }
 
     }
