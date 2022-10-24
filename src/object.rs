@@ -17,7 +17,7 @@ pub enum Obj {
 #[derive(Copy, Clone,PartialEq)]
 pub struct ObjFunction {
     pub arity: u8,
-    pub chunkIndex : i32,
+    pub chunkIndex : u16,
     pub name : ObjString,
     pub functionType: FunctionType
 }
@@ -57,7 +57,7 @@ impl ObjFunction {
     pub fn new() -> Self {
         Self {
             arity:0,
-            chunkIndex: -1,
+            chunkIndex: 0,
             name: ObjString::empty(),
             functionType: FunctionType::SCRIPT
         }
