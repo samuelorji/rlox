@@ -156,7 +156,8 @@ impl<'a> Parser<'a> {
 struct CompilerState<'a >{
     locals:[Local<'a>; u8::MAX as usize],
     localCount: i32,
-    scopeDepth: i32
+    scopeDepth: i32,
+    function: ObjFunction
 }
 
 impl<'a> CompilerState<'a> {
@@ -164,7 +165,8 @@ impl<'a> CompilerState<'a> {
         CompilerState {
             locals: [Local::empty(); u8::MAX as usize],
             localCount: 1,
-            scopeDepth: 0
+            scopeDepth: 0,
+            function: ObjFunction::new()
         }
     }
 }
@@ -175,9 +177,8 @@ pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     parseRules : Vec<ParseRule>,
     vm: &'a mut VM,
-    state: [CompilerState<'a>; u8::MAX as usize],
-    nestedFunctions: [ObjFunction; NESTED_FUNCTIONS_MAX as usize], // use to hold nested functions declarations
-    nestingIndex : u8
+    state: [CompilerState<'a>; u8::MAX as usize], //  nestedFunctions: [ObjFunction; NESTED_FUNCTIONS_MAX as usize], // use to hold nested functions declarations
+    stateIndex: u8
 }
 
 
@@ -296,7 +297,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn parse_argument(&mut self){
-        let currentFunction = &mut self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &mut self.state[self.stateIndex as usize].function;
         currentFunction.arity+=1;
         if(currentFunction.arity > 255) {
             self.errorAtCurrent("Can't have more than 255 parameters");
@@ -306,7 +307,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn createFunctionState(&mut self, functionName : ObjString,functionType : FunctionType) {
-        if (self.nestingIndex >= NESTED_FUNCTIONS_MAX - 1) {
+        if (self.stateIndex >= NESTED_FUNCTIONS_MAX - 1) {
             self.error("too many nested functions");
         } else {
             let newChunk = Chunk::new();
@@ -320,8 +321,8 @@ impl<'a> Compiler<'a> {
                 name: functionName,
                 functionType
             };
-            self.nestingIndex += 1;
-            self.nestedFunctions[self.nestingIndex as usize] = currentFunction;
+            self.stateIndex += 1;
+            self.state[self.stateIndex as usize].function = currentFunction;
         }
     }
 
@@ -364,7 +365,7 @@ impl<'a> Compiler<'a> {
     fn parse_variable(&mut self,errorMsg : &str, returnVariableName : bool) -> (u8,Option<ObjString>){
         self.consume(IDENTIFIER, errorMsg);
         self.declareVariable();
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
        // println!("inside parse: {}, current state is {}", self.state[self.currentFunction.chunkIndex as usize].scopeDepth, self.currentState);
         if (self.state[currentFunction.chunkIndex as usize].scopeDepth > 0) {
             // we're inside a scoped block, no need to make identifier
@@ -377,7 +378,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn declareVariable(&mut self) {
-        let currentFunction = self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = self.state[self.stateIndex as usize].function;
         if(self.state[currentFunction.chunkIndex as usize].scopeDepth == 0) {
             // we're in global scope, return
             return
@@ -401,7 +402,7 @@ impl<'a> Compiler<'a> {
 
     fn addLocal(&mut self, token : Token<'a>) {
 
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         if (self.state[currentFunction.chunkIndex as usize].localCount == u8::MAX as i32) {
            self.error("Too many local variables in function.");
             return;
@@ -418,7 +419,7 @@ impl<'a> Compiler<'a> {
 
     fn define_variable(&mut self, index: u8) {
 
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         if (self.state[currentFunction.chunkIndex as usize].scopeDepth > 0) {
             // no need to globally define variable if we're in a scoped block
             self.markInitialized();
@@ -433,14 +434,14 @@ impl<'a> Compiler<'a> {
 
         //println!("scope depth {}, localCount : {}, currentState is {}", &currentScopeDepth, currentLocalCount,self.currentState);
 
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         if (self.state[currentFunction.chunkIndex as usize].scopeDepth == 0){
             return;
         }
         // when declaring the variable, we set the depth of the local to be -1,
         // here we set it to the right scope depth
 
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         let currentFunctionIndex = currentFunction.chunkIndex;
         self.state[currentFunctionIndex as usize].locals[(self.state[currentFunctionIndex as usize].localCount - 1) as usize].depth = self.state[currentFunctionIndex as usize].scopeDepth;
 
@@ -547,7 +548,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn return_statement(&mut self) {
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         if(currentFunction.functionType == FunctionType::SCRIPT) {
             self.error("Cannot return from top level code");
         }
@@ -576,7 +577,7 @@ impl<'a> Compiler<'a> {
         }
 
 
-        let currentFunction = self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = self.state[self.stateIndex as usize].function;
         let mut loopStart = self.vm.functionChunks[currentFunction.chunkIndex as usize].code.len();
         //self.consume(TOKEN_SEMICOLON, "Expect ';'.");
 
@@ -618,7 +619,7 @@ impl<'a> Compiler<'a> {
         self.endScope()
     }
     fn while_statement(&mut self) {
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         let mut loopStart = self.vm.functionChunks[currentFunction.chunkIndex as usize].code.len();
         self.consume(LEFT_PAREN, "Expect '(' after 'while'.");
         self.expression();
@@ -640,7 +641,7 @@ impl<'a> Compiler<'a> {
         // It emits a new loop instruction, which unconditionally jumps backwards by a given offset.
         self.emitOpcode(OP_LOOP);
 
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         let offset = self.vm.functionChunks[currentFunction.chunkIndex as usize].code.len() - loopStart + 2;
 
         if(offset as u16 > u16::MAX) {
@@ -660,7 +661,7 @@ impl<'a> Compiler<'a> {
         // A 16-bit offset lets us jump over up to 65,535 bytes of code, which should be plenty for our needs.
         self.emitByte(u8::MAX);
         self.emitByte(u8::MAX);
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
 
         (self.vm.functionChunks[currentFunction.chunkIndex as usize].code.len() - 2) as u32
     }
@@ -680,7 +681,7 @@ impl<'a> Compiler<'a> {
         our stack is just a vec of bytes, in emit jump, we used two slots (16 bit) to store the value of this jump
         which shouldn't be more than u16::MAX. Now, how do we encode a 16 bit value in 2 (8 bit values)
          */
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         let jump = self.vm.functionChunks[currentFunction.chunkIndex as usize].code.len() as u32 - offset - 2;
 
         //println!("jump is {}, offset is {}",&jump,&offset);
@@ -717,7 +718,7 @@ impl<'a> Compiler<'a> {
         // let second_half_of_16_bit_jump = jump as u8;
 
         // seee vm (fn read_16_bit_short) for how we decode
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
          self.vm.functionChunks[currentFunction.chunkIndex as usize].code[offset as usize] = first_half_of_16_bit_jump;
          self.vm.functionChunks[currentFunction.chunkIndex as usize].code[(offset + 1) as usize] = second_half_of_16_bit_jump;
 
@@ -731,11 +732,11 @@ impl<'a> Compiler<'a> {
     }
 
     fn beginScope(&mut self){
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         self.state[currentFunction.chunkIndex as usize].scopeDepth+=1
     }
     fn endScope(&mut self){
-        let currentFunction = self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = self.state[self.stateIndex as usize].function;
         self.state[currentFunction.chunkIndex as usize].scopeDepth-=1;
         while(self.state[currentFunction.chunkIndex as usize].localCount > 0 && self.state[currentFunction.chunkIndex as usize].locals[(self.state[currentFunction.chunkIndex as usize].localCount - 1) as usize].depth > self.state[currentFunction.chunkIndex as usize].scopeDepth) {
             // we remove all local variables at the scope depth we just left
@@ -764,7 +765,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn resolveLocal(&mut self, token : Token<'a>) -> i32 {
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         let mut i = self.state[currentFunction.chunkIndex as usize].localCount - 1;
 
         while(i >= 0) {
@@ -823,12 +824,12 @@ impl<'a> Compiler<'a> {
     }
 
     fn emitByte(&mut self,byte: u8) {
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         self.vm.functionChunks[currentFunction.chunkIndex as usize].write(byte, self.parser.previous.line)
     }
 
     fn emitOpcode(&mut self, opCode : OpCode) {
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         self.vm.functionChunks[currentFunction.chunkIndex as usize].write(opCode.to_u8(), self.parser.previous.line)
     }
 
@@ -877,7 +878,7 @@ impl<'a> Compiler<'a> {
                 // }
                 if(!self.parser.hadError){
                     //println!("current function {:?}",&self.currentFunction);
-                    let currentFunction = self.nestedFunctions[self.nestingIndex as usize];
+                    let currentFunction = self.state[self.stateIndex as usize].function;
                     let funcName = if currentFunction.name.is_empty() {
                         "<script>"
                     } else {
@@ -891,10 +892,10 @@ impl<'a> Compiler<'a> {
 
         //println!("finishing current function {:?}, previous is {:?}",&self.currentFunction,&self.previousFunction);
 
-        let currentFunction = self.nestedFunctions[self.nestingIndex as usize];
-        self.nestedFunctions[self.nestingIndex as usize] = ObjFunction::new();
-        if(self.nestingIndex > 0) {
-            self.nestingIndex -= 1;
+        let currentFunction = self.state[self.stateIndex as usize].function;
+        self.state[self.stateIndex as usize] = CompilerState::new();
+        if(self.stateIndex > 0) {
+            self.stateIndex -= 1;
         }
         currentFunction
 
@@ -905,7 +906,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn makeConstant(&mut self, value : Value) -> u8 {
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         let constantIndex =  self.vm.functionChunks[currentFunction.chunkIndex as usize].addConstant(value);
         if(constantIndex > u8::MAX as u32) {
             self.error("Too many constants in one chunk.");
@@ -926,7 +927,7 @@ impl<'a> Compiler<'a> {
 
 
     pub fn emitReturn(&mut self) {
-        let currentFunction = &self.nestedFunctions[self.nestingIndex as usize];
+        let currentFunction = &self.state[self.stateIndex as usize].function;
         self.vm.functionChunks[currentFunction.chunkIndex as usize].write(OP_NIL.to_u8(), self.parser.previous.line);
         self.vm.functionChunks[currentFunction.chunkIndex as usize].write(OP_RETURN.to_u8(), self.parser.previous.line);
     }
@@ -1009,8 +1010,8 @@ impl<'a> Compiler<'a> {
             parseRules : ParseRule::rules(), // store default on the compiler
             vm,
             state: [CompilerState::new(); u8::MAX as usize],
-            nestedFunctions: [ObjFunction::new(); NESTED_FUNCTIONS_MAX as usize],
-            nestingIndex: 0
+            
+            stateIndex: 0
         };
         
         let initState = &mut compiler.state[0];

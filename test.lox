@@ -1,7 +1,12 @@
-fun adder(a,b) {
- return a + b;
+var global = "global";
+fun outer(){
+
+fun inner(){
+    fun inner2(){
+        print global;
+    }
+    inner2();
 }
-fun multiplier (a,b) {
- return a * b ;
+    inner();
 }
-print adder(3,4) + multiplier(3,4);
+outer();
