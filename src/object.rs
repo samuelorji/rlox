@@ -10,10 +10,40 @@ use crate::{Chunk, FunctionType, Value};
 pub enum Obj {
     STRING(ObjString),
     FUNCTION(ObjFunction),
-    NATIVE_FUNCTION(NativeFunction)
+    NATIVE_FUNCTION(NativeFunction),
+    CLOSURE(ObjClosure)
 
 }
 
+#[derive(Copy, Clone,PartialEq)]
+pub struct ObjClosure {
+    pub function : ObjFunction
+}
+
+impl ObjClosure {
+    pub fn new(function : ObjFunction) -> Self {
+        Self {
+            function
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            function: ObjFunction::new()
+        }
+    }
+}
+
+impl Debug for ObjClosure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let name  = if(self.function.name.is_empty()){
+            "<script>"
+        } else {
+            self.function.name.as_str()
+        };
+        write!(f, "{{ name : {} , arity : {} }}",name,self.function.arity)
+    }
+}
 #[derive(Copy, Clone,PartialEq)]
 pub struct ObjFunction {
     pub arity: u8,
@@ -229,6 +259,9 @@ impl Debug for Obj {
             }
             Obj::NATIVE_FUNCTION(native @ NativeFunction{.. }) => {
                 f.write_str("<native fn>")
+            },
+            Obj::CLOSURE(closure @ObjClosure{ .. }) => {
+                f.write_str(closure.function.name.as_str())
             }
         }
     }
@@ -245,8 +278,11 @@ impl Obj {
             }
             Obj::NATIVE_FUNCTION(native @ NativeFunction{ .. }) => {
                 native.name.free()
+            },
+            Obj::CLOSURE(closure @ObjClosure{ .. }) => {
 
             }
+
         }
     }
 }

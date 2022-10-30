@@ -15,7 +15,7 @@ const STACK_MAX: usize = (FRAMES_MAX as usize * u8::MAX as usize);
 
 #[derive(Copy, Clone, Debug)]
 struct CallFrame {
-    function: ObjFunction,
+    closure: ObjClosure,
     ip: usize,
     slot: usize, // index into what slot is used
 }
@@ -23,7 +23,7 @@ struct CallFrame {
 impl CallFrame {
     fn new() -> Self {
         CallFrame {
-            function: ObjFunction::new(),
+            closure: ObjClosure::empty(),
             ip: 0,
             slot: 0,
         }
@@ -102,7 +102,8 @@ impl VM {
             None => return INTERPRET_COMPILE_ERROR,
             Some(function) => {
                 self.stack.push(Value::obj_value(Obj::FUNCTION(function)));
-                self.call(function, 0);
+                let closure = ObjClosure::new(function);
+                self.call(closure, 0);
                 self.run()
                 //InterpretResult::INTERPRET_OK
             }
@@ -174,7 +175,7 @@ impl VM {
                         self.stack.resize((*self.currentFrame).slot, Value::empty());
                         self.stack.push(functionReturnResult);
                         self.currentFrame = &mut self.frames[self.frameCount - 1];
-                        let currentFunctionIndex = (*self.currentFrame).function.chunkIndex as usize;
+                        let currentFunctionIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
                         self.currentChunk = &mut self.functionChunks[currentFunctionIndex];
                         //println!("current frame: {:?}",(*self.currentFrame));
                         //return InterpretResult::INTERPRET_OK;
@@ -313,21 +314,25 @@ impl VM {
                     }
                     self.currentFrame = &mut self.frames[self.frameCount - 1];
                 }
+
+                OpCode::OP_CLOSURE => {
+                    // ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
+                    //         ObjClosure* closure = newClosure(function);
+                    //         push(OBJ_VAL(closure));
+                    //         break;
+
+                    let function = self.readConstant().as_function();
+                    let closure =ObjClosure::new(function);
+                    self.stack.push(Value::OBJ(Obj::CLOSURE(closure)))
+                }
             }
         }
     }
 
     fn callValue(&mut self, callee: Value, argCount: u8) -> bool {
-        // case OBJ_NATIVE: {
-        //         NativeFn native = AS_NATIVE(callee);
-        //         Value result = native(argCount, vm.stackTop - argCount);
-        //         vm.stackTop -= argCount + 1;
-        //         push(result);
-        //         return true;
-        //       }
         match callee {
-            Value::OBJ(Obj::FUNCTION(function @ ObjFunction { .. })) => {
-                self.call(function, argCount)
+            Value::OBJ(Obj::CLOSURE(closure @ObjClosure{ .. })) => {
+                self.call(closure, argCount)
             }
 
             Value::OBJ(Obj::NATIVE_FUNCTION(native @ NativeFunction { .. })) => {
@@ -356,9 +361,9 @@ impl VM {
         }
     }
 
-    fn call(&mut self, function: ObjFunction, argCount: u8) -> bool {
-        if (argCount != function.arity) {
-            self.runtime_error(&format!("Expected {} arguments, but got {}", function.arity, argCount));
+    fn call(&mut self, closure: ObjClosure, argCount: u8) -> bool {
+        if (argCount != closure.function.arity) {
+            self.runtime_error(&format!("Expected {} arguments, but got {}", closure.function.arity, argCount));
             return false;
         }
 
@@ -368,8 +373,8 @@ impl VM {
         }
 
         let mut frame = &mut self.frames[self.frameCount];
-        self.currentChunk = &mut self.functionChunks[function.chunkIndex as usize];
-        frame.function = function;
+        self.currentChunk = &mut self.functionChunks[closure.function.chunkIndex as usize];
+        frame.closure = closure;
         frame.ip = 0;
         frame.slot = self.stack.len() - 1 - (argCount as usize); // the slot for this frame is stack top - arg count - 1 (saved slot for function)
         self.currentFrame = frame as *mut CallFrame;
@@ -530,15 +535,15 @@ impl VM {
 
         while (i > 0) {
             let currentFrame = &self.frames[i];
-            let currentfunctionChunk = &self.functionChunks[currentFrame.function.chunkIndex as usize];
+            let currentfunctionChunk = &self.functionChunks[currentFrame.closure.function.chunkIndex as usize];
 
             // println!("{:?}",currentfunction);
             let line_number = (*currentfunctionChunk).lines[currentFrame.ip];
 
-            let function_name = if (currentFrame.function.name.is_empty()) {
+            let function_name = if (currentFrame.closure.function.name.is_empty()) {
                 "<script>"
             } else {
-                currentFrame.function.name.as_str()
+                currentFrame.closure.function.name.as_str()
             };
 
             eprintln!("[line {}] in {}", line_number, function_name);

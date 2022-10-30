@@ -29,7 +29,8 @@ pub enum OpCode {
     OP_JUMP_IF_FALSE,
     OP_JUMP,
     OP_LOOP,
-    OP_CALL
+    OP_CALL,
+    OP_CLOSURE
 
 }
 
@@ -63,44 +64,45 @@ impl From<u8> for OpCode{
             22 => OpCode::OP_JUMP,
             23 => OpCode::OP_LOOP,
             24 => OpCode::OP_CALL,
+            25 => OpCode::OP_CLOSURE,
             _ => panic!( "unknown opcode {}", x)
         }
 
     }
 }
 
-impl TryFrom<&u8> for OpCode {
-    type Error = u8;
-
-    fn try_from(value: &u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(OpCode::OP_RETURN),
-            1 => Ok(OpCode::OP_CONSTANT),
-            2 => Ok(OpCode::OP_NEGATE),
-            3 => Ok(OpCode::OP_ADD),
-            4 => Ok(OpCode::OP_SUBTRACT),
-            5 => Ok(OpCode::OP_DIVIDE),
-            6 => Ok(OpCode::OP_MULTIPLY),
-            7 => Ok(OpCode::OP_NIL),
-            8 => Ok(OpCode::OP_TRUE),
-            9 => Ok(OpCode::OP_FALSE),
-            10 => Ok(OpCode::OP_NOT),
-            11 => Ok(OpCode::OP_EQUAL),
-            12 => Ok(OpCode::OP_GREATER),
-            13 => Ok(OpCode::OP_LESS),
-            14 => Ok(OpCode::OP_PRINT),
-            15 => Ok(OpCode::OP_POP),
-            16 => Ok(OpCode::OP_DEFINE_GLOBAL),
-            17 => Ok(OpCode::OP_GET_GLOBAL),
-            18 => Ok(OpCode::OP_SET_GLOBAL),
-            19 => Ok(OpCode::OP_GET_LOCAL),
-            20 => Ok(OpCode::OP_SET_LOCAL),
-            21 => Ok(OpCode::OP_JUMP_IF_FALSE),
-            22 => Ok(OpCode::OP_JUMP),
-            x => Err(*x)
-        }
-    }
-}
+// impl TryFrom<&u8> for OpCode {
+//     type Error = u8;
+//
+//     fn try_from(value: &u8) -> Result<Self, Self::Error> {
+//         match value {
+//             0 => Ok(OpCode::OP_RETURN),
+//             1 => Ok(OpCode::OP_CONSTANT),
+//             2 => Ok(OpCode::OP_NEGATE),
+//             3 => Ok(OpCode::OP_ADD),
+//             4 => Ok(OpCode::OP_SUBTRACT),
+//             5 => Ok(OpCode::OP_DIVIDE),
+//             6 => Ok(OpCode::OP_MULTIPLY),
+//             7 => Ok(OpCode::OP_NIL),
+//             8 => Ok(OpCode::OP_TRUE),
+//             9 => Ok(OpCode::OP_FALSE),
+//             10 => Ok(OpCode::OP_NOT),
+//             11 => Ok(OpCode::OP_EQUAL),
+//             12 => Ok(OpCode::OP_GREATER),
+//             13 => Ok(OpCode::OP_LESS),
+//             14 => Ok(OpCode::OP_PRINT),
+//             15 => Ok(OpCode::OP_POP),
+//             16 => Ok(OpCode::OP_DEFINE_GLOBAL),
+//             17 => Ok(OpCode::OP_GET_GLOBAL),
+//             18 => Ok(OpCode::OP_SET_GLOBAL),
+//             19 => Ok(OpCode::OP_GET_LOCAL),
+//             20 => Ok(OpCode::OP_SET_LOCAL),
+//             21 => Ok(OpCode::OP_JUMP_IF_FALSE),
+//             22 => Ok(OpCode::OP_JUMP),
+//             x => Err(*x)
+//         }
+//     }
+// }
 impl From<OpCode> for u8 {
     fn from(opcode: OpCode) -> Self {
        opcode as u8
@@ -221,6 +223,16 @@ impl Chunk {
             OpCode::OP_LOOP => self.jumpInstruction("OP_LOOP", -1, offset),
 
             OpCode::OP_CALL => self.byteInstruction("OP_CALL", offset),
+
+            OpCode::OP_CLOSURE => {
+                let mut offset = offset+1;
+                let constant = self.code[offset];
+                offset+=1;
+                print!("{:>16} {:>4} ", "OP_CLOSURE", constant);
+                printValue(&self.constants.values[constant as usize]);
+                print!("\n");
+                return offset;
+            }
         }
 
     }

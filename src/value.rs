@@ -83,6 +83,14 @@ impl Debug for Value {
                     Obj::NATIVE_FUNCTION(native @NativeFunction{..}) => {
                         f.write_str("<native fn>")
                     }
+                    Obj::CLOSURE(closure @ObjClosure{ .. }) => {
+                        let funcName = if closure.function.name.is_empty() {
+                            "<script>".to_string()
+                        } else {
+                            closure.function.as_String()
+                        };
+                        f.write_str(&funcName)
+                    }
 
 
                 }
@@ -147,6 +155,15 @@ impl Value {
         match self {
             Value::OBJ(Obj::FUNCTION(func @ ObjFunction { .. })) => {
                 func
+            },
+            x => panic!("{:?} is not an function string",x)
+        }
+    }
+
+    pub fn as_closure(self) -> ObjClosure {
+        match self {
+            Value::OBJ(Obj::CLOSURE(closure @ ObjClosure { .. })) => {
+                closure
             },
             x => panic!("{:?} is not an function string",x)
         }

@@ -5,7 +5,7 @@ use std::fmt::format;
 use crate::scanner::*;
 use crate::{Chunk, ObjFunction, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
-use crate::OpCode::{OP_CALL, OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
+use crate::OpCode::{OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
 use crate::scanner::TokenType::*;
 
 
@@ -290,7 +290,7 @@ impl<'a> Compiler<'a> {
         let function = self.end();
         let constantIndex = self.makeConstant(Value::obj_value(Obj::FUNCTION(function)));
 
-        self.emitBytes(OP_CONSTANT.to_u8(),constantIndex );
+        self.emitBytes(OP_CLOSURE.to_u8(),constantIndex ); // emit an opclosure that will be read as a function
 
 
     }

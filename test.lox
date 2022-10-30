@@ -1,7 +1,7 @@
-fun outer() {
-  fun inner(a,b,c,d) {
-    print a + b + c +d;
-  }
-  inner(1,2,3,4);
+fun adder(a,b) {
+ return a + b;
 }
-outer();
+fun multiplier (a,b) {
+ return a * b ;
+}
+print adder(3,4) + multiplier(3,4);
