@@ -9,7 +9,7 @@ edition = "2021"
 
 [features]
 #default = ["debug_trace_execution"]
-debug_trace_execution = []
+debug = []
 
 
 [dev-dependencies]

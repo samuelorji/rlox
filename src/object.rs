@@ -49,7 +49,8 @@ pub struct ObjFunction {
     pub arity: u8,
     pub chunkIndex : u16,
     pub name : ObjString,
-    pub functionType: FunctionType
+    pub functionType: FunctionType,
+    pub upValueCount: i32
 }
 
 #[derive(Copy,Clone,PartialEq)]
@@ -89,7 +90,8 @@ impl ObjFunction {
             arity:0,
             chunkIndex: 0,
             name: ObjString::empty(),
-            functionType: FunctionType::SCRIPT
+            functionType: FunctionType::SCRIPT,
+            upValueCount: 0
         }
     }
 

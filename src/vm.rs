@@ -130,7 +130,7 @@ impl VM {
     fn run(&mut self) -> InterpretResult {
         // self.currentFrame = &mut self.frames[(self.frameCount - 1) as usize];
         loop {
-            #[cfg(feature = "debug_trace_execution")]
+            #[cfg(feature = "debug")]
                 // prints code offset, line number instruction name, constant offset and constant value
                 {
                     let chunk = self.currentChunk;
@@ -325,6 +325,9 @@ impl VM {
                     let closure =ObjClosure::new(function);
                     self.stack.push(Value::OBJ(Obj::CLOSURE(closure)))
                 }
+
+                OpCode::OP_GET_UPVALUE => {}
+                OpCode::OP_SET_UPVALUE => {}
             }
         }
     }

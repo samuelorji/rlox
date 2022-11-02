@@ -30,7 +30,9 @@ pub enum OpCode {
     OP_JUMP,
     OP_LOOP,
     OP_CALL,
-    OP_CLOSURE
+    OP_CLOSURE,
+    OP_GET_UPVALUE,
+    OP_SET_UPVALUE,
 
 }
 
@@ -65,6 +67,8 @@ impl From<u8> for OpCode{
             23 => OpCode::OP_LOOP,
             24 => OpCode::OP_CALL,
             25 => OpCode::OP_CLOSURE,
+            26 => OpCode::OP_GET_UPVALUE,
+            27 => OpCode::OP_SET_UPVALUE,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -228,10 +232,38 @@ impl Chunk {
                 let mut offset = offset+1;
                 let constant = self.code[offset];
                 offset+=1;
-                print!("{:>16} {:>4} ", "OP_CLOSURE", constant);
+                print!("{:-16} {:-4} ", "OP_CLOSURE", constant);
                 printValue(&self.constants.values[constant as usize]);
                 print!("\n");
+
+                // ObjFunction* function = AS_FUNCTION(
+                //           chunk->constants.values[constant]);
+                //       for (int j = 0; j < function->upvalueCount; j++) {
+                //         int isLocal = chunk->code[offset++];
+                //         int index = chunk->code[offset++];
+                //         printf("%04d      |                     %s %d\n",
+                //                offset - 2, isLocal ? "local" : "upvalue", index);
+                //       }
+
+                let function  =  self.constants.values[constant as usize].as_function();
+
+                for _ in 0..function.upValueCount as usize {
+                    let isLocal = self.code[offset];
+                    offset+=1;
+                    let index = self.code[offset];
+                    offset+=1;
+
+                    let localType = if isLocal == 1 {"local"} else  {"upvalue"};
+                    print!("{:04}      |                     {} {}\n",offset -2,localType , index);
+                }
                 return offset;
+            }
+
+            OpCode::OP_GET_UPVALUE => {
+                self.byteInstruction("OP_GET_UP_VALUE", offset)
+            }
+            OpCode::OP_SET_UPVALUE => {
+                self.byteInstruction("OP_SET_UP_VALUE", offset)
             }
         }
 

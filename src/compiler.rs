@@ -5,7 +5,7 @@ use std::fmt::format;
 use crate::scanner::*;
 use crate::{Chunk, ObjFunction, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
-use crate::OpCode::{OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_FALSE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_TRUE};
+use crate::OpCode::{OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_FALSE, OP_GET_UPVALUE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_SET_UPVALUE, OP_TRUE};
 use crate::scanner::TokenType::*;
 
 
@@ -178,7 +178,23 @@ pub struct Compiler<'a> {
     parseRules : Vec<ParseRule>,
     vm: &'a mut VM,
     state: [CompilerState<'a>; u8::MAX as usize], //  nestedFunctions: [ObjFunction; NESTED_FUNCTIONS_MAX as usize], // use to hold nested functions declarations
-    stateIndex: u8
+    stateIndex: u8,
+    upValues : [UpValue; u8::MAX as usize]
+}
+
+#[derive(Copy,Clone)]
+pub struct UpValue {
+    index: u8,
+    isLocal: bool
+}
+
+impl UpValue {
+    fn new() -> Self {
+        Self {
+            index: 0,
+            isLocal: false
+        }
+    }
 }
 
 
@@ -294,6 +310,18 @@ impl<'a> Compiler<'a> {
         self.emitBytes(OP_CLOSURE.to_u8(),constantIndex ); // emit an opclosure that will be read as a function
 
 
+        // for (int i = 0; i < function->upvalueCount; i++) {
+        //     emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+        //     emitByte(compiler.upvalues[i].index);
+        //   }
+
+        for i in 0..function.upValueCount as usize {
+            let isLocalSignal: u8 = if self.upValues[i].isLocal {1} else {0};
+            self.emitByte(isLocalSignal);
+            self.emitByte(self.upValues[i].index);
+        }
+
+
     }
 
     fn parse_argument(&mut self){
@@ -319,7 +347,8 @@ impl<'a> Compiler<'a> {
                 arity: 0, // arity will be set when parsing the argument list
                 chunkIndex: chunkIndex as u16,
                 name: functionName,
-                functionType
+                functionType,
+                upValueCount:0
             };
             self.stateIndex += 1;
             self.state[self.stateIndex as usize].function = currentFunction;
@@ -768,6 +797,9 @@ impl<'a> Compiler<'a> {
         let currentFunction = &self.state[self.stateIndex as usize].function;
         let mut i = self.state[currentFunction.chunkIndex as usize].localCount - 1;
 
+        println!("current function chunk index {}, state index {}", self.stateIndex, currentFunction.chunkIndex);
+     //   println!("local count is {i}");
+
         while(i >= 0) {
             // walk backwards from the local stack and if any local matches the token we're looking for
             // we return the index
@@ -790,10 +822,18 @@ impl<'a> Compiler<'a> {
         let mut setOp : OpCode = OpCode::OP_NIL;
 
         let mut arg = self.resolveLocal(self.parser.previous);
+      //  println!("arg is {arg}");
         if(arg != -1){
             getOp = OpCode::OP_GET_LOCAL;
             setOp= OpCode::OP_SET_LOCAL;
-        } else {
+        } else if {
+            arg = self.resolve_UpValue(self.parser.previous);
+            arg != -1
+        } {
+            getOp = OP_GET_UPVALUE;
+            setOp = OP_SET_UPVALUE
+
+        }else {
             // this wil take the consumed identifier, stash it in the constant table and return the index
             // where this was saved
             arg = (self.identifierConstant(false)).0 as i32;
@@ -812,6 +852,62 @@ impl<'a> Compiler<'a> {
         } else {
             self.emitBytes(getOp.to_u8(), index);
         }
+    }
+
+    fn resolve_UpValue(&mut self, token : Token<'a>) -> i32 {
+        if(self.stateIndex < 0) {
+            return -1
+        } else {
+
+            let savedState = self.stateIndex;
+            //println!("state index is {savedState}");
+
+            self.stateIndex=savedState - 1 ; // check previous state/ function
+         //   println!("resolving up value in {}",&self.state[self.stateIndex as usize].function.name.as_str());
+
+            println!("state index is {}",savedState - 1);
+            //println!("checking state is {}",&self.stateIndex);
+            let local = self.resolveLocal(token);
+        //    println!("local is {local}");
+            self.stateIndex = savedState;
+            if(local != -1) {
+                return self.add_UpValue(local as u8, true)
+            }
+
+            let savedState = self.stateIndex;
+            self.stateIndex=savedState - 1 ; // check previous state/ function
+            let upValue = self.resolve_UpValue(token);
+            self.stateIndex = savedState;
+            if(upValue != -1) {
+                return self.add_UpValue(upValue as u8, false)
+            }
+            return -1
+        }
+    }
+
+    fn add_UpValue(&mut self, index : u8, isLocal : bool) -> i32 {
+        let upValueCount = self.state[self.stateIndex as usize].function.upValueCount;
+
+        for i in 0..upValueCount {
+            let upValue = &self.upValues[i as usize];
+            if(upValue.index == index && upValue.isLocal == isLocal){
+                return i;
+            }
+        }
+
+        if (upValueCount == u8::MAX as i32) {
+            self.error("Too many closure variables in function.");
+            return 0;
+        }
+
+
+        self.upValues[upValueCount as usize].isLocal = isLocal;
+        self.upValues[upValueCount as usize].index = index;
+
+        self.state[self.stateIndex as usize].function.upValueCount = upValueCount+1;
+        upValueCount
+
+
     }
     fn check_current_type(&mut self, tokenType : TokenType) -> bool {
         self.parser.current.tokenType == tokenType
@@ -870,7 +966,8 @@ impl<'a> Compiler<'a> {
         }
     }
     pub fn end(&mut self) -> ObjFunction {
-        #[cfg(feature = "debug_trace_execution")]
+        self.emitReturn();
+        #[cfg(feature = "debug")]
             {
                 // for (i, code) in self.chunk.code.iter().enumerate() {
                 //     let opcodeOpt = OpCode::try_from(code);
@@ -888,7 +985,7 @@ impl<'a> Compiler<'a> {
 
                 }
             }
-        self.emitReturn();
+
 
         //println!("finishing current function {:?}, previous is {:?}",&self.currentFunction,&self.previousFunction);
 
@@ -990,18 +1087,6 @@ impl<'a> Compiler<'a> {
     }
     pub fn new(sourcer: &'a [u8], vm : &'a mut VM) -> Self {
 
-        // Local* local = &current->locals[current->localCount++];
-        //   local->depth = 0;
-        //   local->name.start = "";
-        //   local->name.length = 0;
-
-        // let localCount = 0;
-        // let mut locals = [Local::empty(); u8::MAX as usize];
-        // let local = &mut locals[localCount];
-        //
-        // local.depth = 0;
-        // local.
-
         let mut compiler = Self {
             source: sourcer,
             parser: Parser::new(),
@@ -1011,7 +1096,8 @@ impl<'a> Compiler<'a> {
             vm,
             state: [CompilerState::new(); u8::MAX as usize],
             
-            stateIndex: 0
+            stateIndex: 0,
+            upValues: [UpValue::new(); u8::MAX as usize]
         };
         
         let initState = &mut compiler.state[0];
