@@ -157,7 +157,8 @@ struct CompilerState<'a >{
     locals:[Local<'a>; (u8::MAX as usize) + 1],
     localCount: i32,
     scopeDepth: i32,
-    function: ObjFunction
+    function: ObjFunction,
+    upValues: [UpValue; u8::MAX as usize]
 }
 
 impl<'a> CompilerState<'a> {
@@ -166,7 +167,8 @@ impl<'a> CompilerState<'a> {
             locals: [Local::empty(); (u8::MAX as usize) + 1],
             localCount: 1,
             scopeDepth: 0,
-            function: ObjFunction::new()
+            function: ObjFunction::new(),
+            upValues: [UpValue::new(); u8::MAX as usize]
         }
     }
 }
@@ -179,10 +181,9 @@ pub struct Compiler<'a> {
     vm: &'a mut VM,
     state: [CompilerState<'a>; u8::MAX as usize], //  nestedFunctions: [ObjFunction; NESTED_FUNCTIONS_MAX as usize], // use to hold nested functions declarations
     stateIndex: u8,
-    upValues : [UpValue; u8::MAX as usize]
 }
 
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,Debug)]
 pub struct UpValue {
     index: u8,
     isLocal: bool
@@ -243,6 +244,15 @@ impl<'a> Compiler<'a> {
         if self.parser.hadError {
             None
         }else {
+            // for stateIndex in 1..3{
+            //     println!("====================================");
+            //     for upV in &self.state[stateIndex].upValues[0..3]{
+            //             println!("{:?}",upV)
+            //         }
+            //
+            //     println!("====================================");
+            // }
+
             Some(returnedFunc)
         }
     }
@@ -316,10 +326,17 @@ impl<'a> Compiler<'a> {
         //   }
 
         for i in 0..function.upValueCount as usize {
-            let isLocalSignal: u8 = if self.upValues[i].isLocal {1} else {0};
+            let upValue = &self.state[self.stateIndex as usize].upValues[i];
+          //  println!("for function {},  i is {} , isLocal : {} . upValueIndex : {}", function.name.as_str(), i,  upValue.isLocal, upValue.index);
+            let isLocalSignal: u8 = if self.state[(self.stateIndex as usize) + 1].upValues[i].isLocal {1} else {0};
             self.emitByte(isLocalSignal);
-            self.emitByte(self.upValues[i].index);
+            self.emitByte(self.state[(self.stateIndex as usize) +1 ].upValues[i].index);
         }
+
+        // self.state[self.stateIndex as usize] = CompilerState::new();
+        // if(self.stateIndex != 0) {
+        //     self.stateIndex -= 1;
+        // }
 
 
     }
@@ -351,6 +368,8 @@ impl<'a> Compiler<'a> {
                 upValueCount:0
             };
             self.stateIndex += 1;
+            // set state to empty
+            self.state[self.stateIndex as usize] = CompilerState::new();
             self.state[self.stateIndex as usize].function = currentFunction;
         }
     }
@@ -765,11 +784,10 @@ impl<'a> Compiler<'a> {
         self.state[self.stateIndex as usize].scopeDepth+=1
     }
     fn endScope(&mut self){
-        let currentFunction = self.state[self.stateIndex as usize].function;
         self.state[self.stateIndex as usize].scopeDepth-=1;
         while(self.state[self.stateIndex as usize].localCount > 0 && self.state[self.stateIndex as usize].locals[(self.state[self.stateIndex as usize].localCount - 1) as usize].depth > self.state[self.stateIndex as usize].scopeDepth) {
             // we remove all local variables at the scope depth we just left
-            // so for scope depth 2, we remove al loca variables with scope depth > 2
+            // so for scope depth 2, we remove al local variables with scope depth > 2
             self.emitOpcode(OpCode::OP_POP);
             self.state[self.stateIndex as usize].localCount-=1
 
@@ -793,19 +811,21 @@ impl<'a> Compiler<'a> {
 
     }
 
-    fn resolveLocal(&mut self, token : Token<'a>) -> i32 {
-        let stateIndex = self.stateIndex;
+    fn resolveLocal(&mut self, token : Token<'a>, stateIndex : usize) -> i32 {
+        //let stateIndex = self.stateIndex;
        // let currentFunction = &self.state[self.stateIndex as usize].function;
         // if (stateIndex as u16 != currentFunction.chunkIndex as u16) {
         //     println!("current function is {}", currentFunction.as_String())
         // }
        //println!("state index is {}, current function index is {} resolving token {:?}", stateIndex, currentFunction.chunkIndex,token.lexeme());
-        let mut i = self.state[self.stateIndex as usize].localCount - 1;
+
+
+        let mut i = self.state[stateIndex ].localCount - 1;
 
         while(i >= 0) {
             // walk backwards from the local stack and if any local matches the token we're looking for
             // we return the index
-            let local = &self.state[self.stateIndex as usize].locals[i as usize];
+            let local = &self.state[stateIndex].locals[i as usize];
             if (local.name == token){
                 if (local.depth == -1) {
                     self.error("Can't read local variable in its own initializer.");
@@ -823,13 +843,13 @@ impl<'a> Compiler<'a> {
         let mut getOp : OpCode = OpCode::OP_NIL;
         let mut setOp : OpCode = OpCode::OP_NIL;
 
-        let mut arg = self.resolveLocal(self.parser.previous);
+        let mut arg = self.resolveLocal(self.parser.previous,self.stateIndex as usize);
       //  println!("arg is {arg}");
         if(arg != -1){
             getOp = OpCode::OP_GET_LOCAL;
             setOp= OpCode::OP_SET_LOCAL;
         } else if {
-            arg = self.resolve_UpValue(self.parser.previous);
+            arg = self.resolveUpValue(self.parser.previous, self.stateIndex as usize);
             arg != -1
         } {
             getOp = OP_GET_UPVALUE;
@@ -856,42 +876,30 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn resolve_UpValue(&mut self, token : Token<'a>) -> i32 {
-        if(self.stateIndex < 0) {
+    fn resolveUpValue(&mut self, token : Token<'a>, stateIndex : usize) -> i32 {
+        if(stateIndex < 1) {
             return -1
         } else {
-
-            let savedState = self.stateIndex;
-            //println!("state index is {savedState}");
-
-            self.stateIndex=savedState - 1 ; // check previous state/ function
-         //   println!("resolving up value in {}",&self.state[self.stateIndex as usize].function.name.as_str());
-
-            println!("state index is {}",savedState - 1);
-            //println!("checking state is {}",&self.stateIndex);
-            let local = self.resolveLocal(token);
-        //    println!("local is {local}");
-            self.stateIndex = savedState;
+            // check local in previous function
+            let local = self.resolveLocal(token,stateIndex - 1 );
             if(local != -1) {
-                return self.add_UpValue(local as u8, true)
+                return self.add_UpValue(local as u8, true,stateIndex)
             }
-
-            let savedState = self.stateIndex;
-            self.stateIndex=savedState - 1 ; // check previous state/ function
-            let upValue = self.resolve_UpValue(token);
-            self.stateIndex = savedState;
+            // if variable was not found in previous function, recurse to find where it is
+            let upValue = self.resolveUpValue(token, stateIndex - 1);
             if(upValue != -1) {
-                return self.add_UpValue(upValue as u8, false)
+                return self.add_UpValue(upValue as u8, false,stateIndex)
             }
             return -1
         }
     }
 
-    fn add_UpValue(&mut self, index : u8, isLocal : bool) -> i32 {
-        let upValueCount = self.state[self.stateIndex as usize].function.upValueCount;
+    fn add_UpValue(&mut self, index : u8, isLocal : bool,stateIndex : usize) -> i32 {
+
+        let upValueCount = self.state[stateIndex].function.upValueCount;
 
         for i in 0..upValueCount {
-            let upValue = &self.upValues[i as usize];
+            let upValue = &self.state[stateIndex].upValues[i as usize];
             if(upValue.index == index && upValue.isLocal == isLocal){
                 return i;
             }
@@ -902,11 +910,10 @@ impl<'a> Compiler<'a> {
             return 0;
         }
 
+        self.state[stateIndex].upValues[upValueCount as usize].isLocal = isLocal;
+        self.state[stateIndex].upValues[upValueCount as usize].index = index;
 
-        self.upValues[upValueCount as usize].isLocal = isLocal;
-        self.upValues[upValueCount as usize].index = index;
-
-        self.state[self.stateIndex as usize].function.upValueCount = upValueCount+1;
+        self.state[stateIndex].function.upValueCount = upValueCount+1;
         upValueCount
 
 
@@ -970,10 +977,6 @@ impl<'a> Compiler<'a> {
         self.emitReturn();
         #[cfg(feature = "debug")]
             {
-                // for (i, code) in self.chunk.code.iter().enumerate() {
-                //     let opcodeOpt = OpCode::try_from(code);
-                //     println!("index: {}, code: {:?}", i, opcodeOpt)
-                // }
                 if(!self.parser.hadError){
                     //println!("current function {:?}",&self.currentFunction);
                     let currentFunction = self.state[self.stateIndex as usize].function;
@@ -990,8 +993,8 @@ impl<'a> Compiler<'a> {
 
         //println!("finishing current function {:?}, previous is {:?}",&self.currentFunction,&self.previousFunction);
 
+
         let currentFunction = self.state[self.stateIndex as usize].function;
-        self.state[self.stateIndex as usize] = CompilerState::new();
         if(self.stateIndex != 0) {
             self.stateIndex -= 1;
         }
@@ -1098,7 +1101,7 @@ impl<'a> Compiler<'a> {
             state: [CompilerState::new(); u8::MAX as usize],
             
             stateIndex: 0,
-            upValues: [UpValue::new(); u8::MAX as usize]
+
         };
         
         // let initState = &mut compiler.state[0];

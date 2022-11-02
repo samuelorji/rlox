@@ -5,7 +5,20 @@ fun outer() {
     var c = 3;
     var d = 4;
     fun inner() {
-      print  b+d;
+      print a + c + b + d;
+    }
+  }
+}
+
+
+fun outer2() {
+  var a = 1;
+  var b = 2;
+  fun middle2() {
+    var c = 3;
+    var d = 4;
+    fun inner2() {
+      print a + c + b + d;
     }
   }
 }
