@@ -179,7 +179,7 @@ pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     parseRules : Vec<ParseRule>,
     vm: &'a mut VM,
-    state: [CompilerState<'a>; u8::MAX as usize], //  nestedFunctions: [ObjFunction; NESTED_FUNCTIONS_MAX as usize], // use to hold nested functions declarations
+    state: [CompilerState<'a>; NESTED_FUNCTIONS_MAX as usize], // use to hold nested functions declarations
     stateIndex: u8,
 }
 
@@ -863,8 +863,6 @@ impl<'a> Compiler<'a> {
             setOp= OpCode::OP_SET_GLOBAL;
         }
 
-
-
         let index = arg as u8;
         if(canAssign && self.match_type(EQUAL)){
             // assignment of a variable
@@ -883,18 +881,18 @@ impl<'a> Compiler<'a> {
             // check local in previous function
             let local = self.resolveLocal(token,stateIndex - 1 );
             if(local != -1) {
-                return self.add_UpValue(local as u8, true,stateIndex)
+                return self.addUpValue(local as u8, true, stateIndex)
             }
             // if variable was not found in previous function, recurse to find where it is
             let upValue = self.resolveUpValue(token, stateIndex - 1);
             if(upValue != -1) {
-                return self.add_UpValue(upValue as u8, false,stateIndex)
+                return self.addUpValue(upValue as u8, false, stateIndex)
             }
             return -1
         }
     }
 
-    fn add_UpValue(&mut self, index : u8, isLocal : bool,stateIndex : usize) -> i32 {
+    fn addUpValue(&mut self, index : u8, isLocal : bool, stateIndex : usize) -> i32 {
 
         let upValueCount = self.state[stateIndex].function.upValueCount;
 
