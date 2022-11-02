@@ -79,6 +79,12 @@ fn main() {
     vm.free();
 
 
+    match interpretResult {
+        InterpretResult::INTERPRET_OK => {}
+        InterpretResult::INTERPRET_COMPILE_ERROR => {std::process::exit(65)}
+        InterpretResult::INTERPRET_RUNTIME_ERROR => {std::process::exit(70)}
+    }
+
 
 
     //
@@ -128,16 +134,16 @@ fn repl(vm : &mut VM)  -> InterpretResult {
 }
 
 fn runFile(path : &str,vm : &mut VM) -> InterpretResult {
-   match  read_file(path) {
-       Ok(source) => {
-           vm.interpret(source)
-       }
-       Err(e) =>
-           {
-               eprintln!("Could not read file : {:?}", e);
-               std::process::exit(65)
-           }
-   }
+    match read_file(path) {
+        Ok(source) => {
+            vm.interpret(source)
+        }
+        Err(e) =>
+            {
+                eprintln!("Could not read file : {:?}", e);
+                std::process::exit(65)
+            }
+    }
 }
 
 fn read_file(path : &str) -> io::Result<Vec<u8>> {

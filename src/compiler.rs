@@ -5,7 +5,7 @@ use std::fmt::format;
 use crate::scanner::*;
 use crate::{Chunk, ObjFunction, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
-use crate::OpCode::{OP_CALL, OP_CLOSURE, OP_CONSTANT, OP_FALSE, OP_GET_UPVALUE, OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP, OP_NIL, OP_POP, OP_PRINT, OP_RETURN, OP_SET_UPVALUE, OP_TRUE};
+use crate::OpCode::*;
 use crate::scanner::TokenType::*;
 
 
@@ -154,7 +154,7 @@ impl<'a> Parser<'a> {
 
 #[derive(Copy, Clone)]
 struct CompilerState<'a >{
-    locals:[Local<'a>; u8::MAX as usize],
+    locals:[Local<'a>; (u8::MAX as usize) + 1],
     localCount: i32,
     scopeDepth: i32,
     function: ObjFunction
@@ -163,7 +163,7 @@ struct CompilerState<'a >{
 impl<'a> CompilerState<'a> {
     fn new() -> Self {
         CompilerState {
-            locals: [Local::empty(); u8::MAX as usize],
+            locals: [Local::empty(); (u8::MAX as usize) + 1],
             localCount: 1,
             scopeDepth: 0,
             function: ObjFunction::new()
@@ -396,7 +396,7 @@ impl<'a> Compiler<'a> {
         self.declareVariable();
         let currentFunction = &self.state[self.stateIndex as usize].function;
        // println!("inside parse: {}, current state is {}", self.state[self.currentFunction.chunkIndex as usize].scopeDepth, self.currentState);
-        if (self.state[currentFunction.chunkIndex as usize].scopeDepth > 0) {
+        if (self.state[self.stateIndex as usize].scopeDepth > 0) {
             // we're inside a scoped block, no need to make identifier
             // There’s no need to stuff the variable’s name into the constant table,
             // so if the declaration is inside a local scope, we return a dummy table index instead.
@@ -408,15 +408,15 @@ impl<'a> Compiler<'a> {
 
     fn declareVariable(&mut self) {
         let currentFunction = self.state[self.stateIndex as usize].function;
-        if(self.state[currentFunction.chunkIndex as usize].scopeDepth == 0) {
+        if(self.state[self.stateIndex as usize].scopeDepth == 0) {
             // we're in global scope, return
             return
         } else {
             let token = self.parser.previous;
-            let mut i = self.state[currentFunction.chunkIndex as usize].localCount - 1;
+            let mut i = self.state[self.stateIndex as usize].localCount - 1;
             while (i >= 0){
-                let local = self.state[currentFunction.chunkIndex as usize].locals[i as usize];
-                if (local.depth != -1 && local.depth < self.state[currentFunction.chunkIndex as usize].scopeDepth){
+                let local = self.state[self.stateIndex as usize].locals[i as usize];
+                if (local.depth != -1 && local.depth < self.state[self.stateIndex as usize].scopeDepth){
                     break
                 }
                 if( local.name == token) {
@@ -430,18 +430,19 @@ impl<'a> Compiler<'a> {
     }
 
     fn addLocal(&mut self, token : Token<'a>) {
-
+        let stateIndex = self.stateIndex as usize;
         let currentFunction = &self.state[self.stateIndex as usize].function;
-        if (self.state[currentFunction.chunkIndex as usize].localCount == u8::MAX as i32) {
+        if (self.state[stateIndex].localCount == (u8::MAX as i32) + 1) {
            self.error("Too many local variables in function.");
             return;
         }
 
-        let local = &mut self.state[currentFunction.chunkIndex as usize].locals[self.state[currentFunction.chunkIndex as usize].localCount as usize];
+        let stateIndex = self.stateIndex as usize;
+        let local = &mut self.state[stateIndex].locals[self.state[stateIndex].localCount as usize];
         local.name = token;
         //local.depth = self.state[self.currentFunction.chunkIndex as usize].scopeDepth;
         local.depth = -1;
-        self.state[currentFunction.chunkIndex as usize].localCount+=1
+        self.state[self.stateIndex as usize].localCount+=1
 
 
     }
@@ -449,7 +450,7 @@ impl<'a> Compiler<'a> {
     fn define_variable(&mut self, index: u8) {
 
         let currentFunction = &self.state[self.stateIndex as usize].function;
-        if (self.state[currentFunction.chunkIndex as usize].scopeDepth > 0) {
+        if (self.state[self.stateIndex as usize].scopeDepth > 0) {
             // no need to globally define variable if we're in a scoped block
             self.markInitialized();
             return;
@@ -464,15 +465,14 @@ impl<'a> Compiler<'a> {
         //println!("scope depth {}, localCount : {}, currentState is {}", &currentScopeDepth, currentLocalCount,self.currentState);
 
         let currentFunction = &self.state[self.stateIndex as usize].function;
-        if (self.state[currentFunction.chunkIndex as usize].scopeDepth == 0){
+        if (self.state[self.stateIndex as usize].scopeDepth == 0){
             return;
         }
         // when declaring the variable, we set the depth of the local to be -1,
         // here we set it to the right scope depth
 
-        let currentFunction = &self.state[self.stateIndex as usize].function;
-        let currentFunctionIndex = currentFunction.chunkIndex;
-        self.state[currentFunctionIndex as usize].locals[(self.state[currentFunctionIndex as usize].localCount - 1) as usize].depth = self.state[currentFunctionIndex as usize].scopeDepth;
+        let stateIndex = self.stateIndex as usize;
+        self.state[stateIndex].locals[(self.state[stateIndex].localCount - 1) as usize].depth = self.state[stateIndex].scopeDepth;
 
     }
 
@@ -762,16 +762,16 @@ impl<'a> Compiler<'a> {
 
     fn beginScope(&mut self){
         let currentFunction = &self.state[self.stateIndex as usize].function;
-        self.state[currentFunction.chunkIndex as usize].scopeDepth+=1
+        self.state[self.stateIndex as usize].scopeDepth+=1
     }
     fn endScope(&mut self){
         let currentFunction = self.state[self.stateIndex as usize].function;
-        self.state[currentFunction.chunkIndex as usize].scopeDepth-=1;
-        while(self.state[currentFunction.chunkIndex as usize].localCount > 0 && self.state[currentFunction.chunkIndex as usize].locals[(self.state[currentFunction.chunkIndex as usize].localCount - 1) as usize].depth > self.state[currentFunction.chunkIndex as usize].scopeDepth) {
+        self.state[self.stateIndex as usize].scopeDepth-=1;
+        while(self.state[self.stateIndex as usize].localCount > 0 && self.state[self.stateIndex as usize].locals[(self.state[self.stateIndex as usize].localCount - 1) as usize].depth > self.state[self.stateIndex as usize].scopeDepth) {
             // we remove all local variables at the scope depth we just left
             // so for scope depth 2, we remove al loca variables with scope depth > 2
             self.emitOpcode(OpCode::OP_POP);
-            self.state[currentFunction.chunkIndex as usize].localCount-=1
+            self.state[self.stateIndex as usize].localCount-=1
 
         }
     }
@@ -794,16 +794,18 @@ impl<'a> Compiler<'a> {
     }
 
     fn resolveLocal(&mut self, token : Token<'a>) -> i32 {
-        let currentFunction = &self.state[self.stateIndex as usize].function;
-        let mut i = self.state[currentFunction.chunkIndex as usize].localCount - 1;
-
-        println!("current function chunk index {}, state index {}", self.stateIndex, currentFunction.chunkIndex);
-     //   println!("local count is {i}");
+        let stateIndex = self.stateIndex;
+       // let currentFunction = &self.state[self.stateIndex as usize].function;
+        // if (stateIndex as u16 != currentFunction.chunkIndex as u16) {
+        //     println!("current function is {}", currentFunction.as_String())
+        // }
+       //println!("state index is {}, current function index is {} resolving token {:?}", stateIndex, currentFunction.chunkIndex,token.lexeme());
+        let mut i = self.state[self.stateIndex as usize].localCount - 1;
 
         while(i >= 0) {
             // walk backwards from the local stack and if any local matches the token we're looking for
             // we return the index
-            let local = &self.state[currentFunction.chunkIndex as usize].locals[i as usize];
+            let local = &self.state[self.stateIndex as usize].locals[i as usize];
             if (local.name == token){
                 if (local.depth == -1) {
                     self.error("Can't read local variable in its own initializer.");
@@ -958,11 +960,10 @@ impl<'a> Compiler<'a> {
                 None => (),
                 Some(rule) => rule(self,canAssign)
             }
+        }
 
-            if(canAssign && self.match_type(EQUAL)){
-                self.error("Invalid assignment target.");
-            }
-
+        if(canAssign && self.match_type(EQUAL)){
+            self.error("Invalid assignment target.");
         }
     }
     pub fn end(&mut self) -> ObjFunction {
@@ -991,7 +992,7 @@ impl<'a> Compiler<'a> {
 
         let currentFunction = self.state[self.stateIndex as usize].function;
         self.state[self.stateIndex as usize] = CompilerState::new();
-        if(self.stateIndex > 0) {
+        if(self.stateIndex != 0) {
             self.stateIndex -= 1;
         }
         currentFunction
@@ -1100,8 +1101,8 @@ impl<'a> Compiler<'a> {
             upValues: [UpValue::new(); u8::MAX as usize]
         };
         
-        let initState = &mut compiler.state[0];
-        initState.localCount = 1;
+        // let initState = &mut compiler.state[0];
+        // initState.localCount = 1;
         
         compiler
     }

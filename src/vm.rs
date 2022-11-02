@@ -536,7 +536,7 @@ impl VM {
         eprintln!("{}", msg);
         let mut i = self.frameCount - 1;
 
-        while (i > 0) {
+        while (i >= 0) {
             let currentFrame = &self.frames[i];
             let currentfunctionChunk = &self.functionChunks[currentFrame.closure.function.chunkIndex as usize];
 
@@ -544,13 +544,17 @@ impl VM {
             let line_number = (*currentfunctionChunk).lines[currentFrame.ip];
 
             let function_name = if (currentFrame.closure.function.name.is_empty()) {
-                "<script>"
+                "script"
             } else {
                 currentFrame.closure.function.name.as_str()
             };
 
             eprintln!("[line {}] in {}", line_number, function_name);
-            i -= 1;
+            if(i == 0) {
+                break;
+            } else {
+                i -= 1;
+            }
         }
 
         self.resetStack()
