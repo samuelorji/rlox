@@ -1,9 +1,11 @@
 use std::alloc::{alloc, Layout};
+use std::hash::Hasher;
 use crate::{Chunk, OpCode, printValue, ValueArray, compile, Compiler, compiled, Value, Table};
 use crate::object::*;
 use std::ptr;
 use std::thread::sleep;
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
+use std::time::Instant;
 
 // ip is instruction pointer,
 ///We use an actual real C pointer pointing right into the middle of the bytecode array instead of something
@@ -40,6 +42,7 @@ pub struct VM {
     globals: Table,
     pub strings: Table,
     pub functionChunks: Vec<Chunk>,
+    upValues: Vec<*mut Value>
 }
 
 
@@ -76,6 +79,7 @@ impl VM {
             globals: Table::new(),
             strings: Table::new(),
             functionChunks: vec![],
+            upValues: vec![]
         };
 
         let clock = ObjString::from_str("clock");
@@ -104,6 +108,7 @@ impl VM {
                 self.stack.push(Value::obj_value(Obj::FUNCTION(function)));
                 let closure = ObjClosure::new(function);
                 self.call(closure, 0);
+                self.upValues.push(ptr::null_mut());
                 self.run()
                 //InterpretResult::INTERPRET_OK
             }
@@ -134,8 +139,9 @@ impl VM {
                 // prints code offset, line number instruction name, constant offset and constant value
                 {
                     let chunk = self.currentChunk;
+                    print!("          ");
                     for slot in &self.stack {
-                        print!("          ");
+
                         print!("[ ");
                         printValue(slot);
                         print!(" ]");
@@ -316,20 +322,69 @@ impl VM {
                 }
 
                 OpCode::OP_CLOSURE => {
-                    // ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
-                    //         ObjClosure* closure = newClosure(function);
-                    //         push(OBJ_VAL(closure));
-                    //         break;
-
+                    unsafe {
                     let function = self.readConstant().as_function();
-                    let closure =ObjClosure::new(function);
-                    self.stack.push(Value::OBJ(Obj::CLOSURE(closure)))
+                    let closure = ObjClosure::new(function);
+                    self.stack.push(Value::OBJ(Obj::CLOSURE(closure)));
+                    if (closure.function.chunkIndex != 0) {
+                        let layout = Layout::array::<Value>(closure.upValueCount as usize).expect("cannot create layout for closures upvalues");
+                        let closurePtr = alloc(layout) as *mut Value;
+
+                        self.upValues.push(closurePtr);
+
+                        for i in 0..closure.upValueCount {
+                            let isLocal = self.readByte();
+                            let index = self.readByte();
+                            let isLocal = isLocal == 1;
+                                if (isLocal) {
+                                    let localValueIndex = (*self.currentFrame).slot + index as usize;
+                                    let mut value = {
+                                        let value = self.getAt(localValueIndex);
+                                        value.clone()
+                                    };
+                                    closurePtr.offset(i as isize).write(value);
+                                } else {
+                                    let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
+                                    let upValuesPtr: *mut Value = self.upValues[closureIndex];
+                                    closurePtr.offset(i as isize).write(upValuesPtr.offset(index as isize).read());
+
+                                }
+                            }
+                        }
+                    }
                 }
 
-                OpCode::OP_GET_UPVALUE => {}
-                OpCode::OP_SET_UPVALUE => {}
+                OpCode::OP_GET_UPVALUE => {
+                    let slot = self.readByte();
+                    let value : Value = unsafe {
+
+                        let index = (*self.currentFrame).closure.function.chunkIndex as usize;
+                        let mut upValuesPtr: *mut Value = self.upValues[index];
+                        let value = upValuesPtr.offset(slot as isize).read();
+                        value
+                    };
+
+                    self.stack.push(value)
+                }
+                OpCode::OP_SET_UPVALUE => {
+                     let slot = self.readByte();
+                    let peeked = self.peek(0).clone();
+
+                    unsafe  {
+                        let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
+                        let mut upValuesPtr: *mut Value = self.upValues[closureIndex];
+                         upValuesPtr.offset(slot as isize).write(peeked);
+                    }
+                }
             }
         }
+    }
+
+    fn captureUpValue(ptr : *mut Value , value :Value) {
+        unsafe {
+            ptr.write(value)
+        };
+
     }
 
     fn callValue(&mut self, callee: Value, argCount: u8) -> bool {
@@ -407,6 +462,10 @@ impl VM {
     }
     fn peek(&self, index: usize) -> &Value {
         &self.stack[self.stack.len() - index - 1]
+    }
+
+    fn getAt(&self, index: usize) -> &Value {
+        &self.stack[index]
     }
     fn readOpCode(&mut self) -> OpCode {
         self.readByte().into()

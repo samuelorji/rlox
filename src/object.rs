@@ -15,21 +15,40 @@ pub enum Obj {
 
 }
 
+#[derive(Copy, Clone)]
+pub struct ObjUpValue {
+    location: *mut Value
+}
+
+// impl ObjUpValue {
+//     fn empty() -> Self {
+//         Self {
+//             location: ptr::null_mut()
+//         }
+//     }
+//
+//     fn newUpValue(value : Value) -> Self {
+//         let
+//     }
+// }
 #[derive(Copy, Clone,PartialEq)]
 pub struct ObjClosure {
-    pub function : ObjFunction
+    pub function : ObjFunction,
+    pub upValueCount : u8
 }
 
 impl ObjClosure {
     pub fn new(function : ObjFunction) -> Self {
         Self {
-            function
+            function,
+            upValueCount: function.upValueCount
         }
     }
 
     pub fn empty() -> Self {
         Self {
-            function: ObjFunction::new()
+            function: ObjFunction::new(),
+            upValueCount: 0
         }
     }
 }
@@ -50,7 +69,7 @@ pub struct ObjFunction {
     pub chunkIndex : u16,
     pub name : ObjString,
     pub functionType: FunctionType,
-    pub upValueCount: i32
+    pub upValueCount: u8
 }
 
 #[derive(Copy,Clone,PartialEq)]

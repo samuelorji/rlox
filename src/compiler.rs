@@ -244,15 +244,6 @@ impl<'a> Compiler<'a> {
         if self.parser.hadError {
             None
         }else {
-            // for stateIndex in 1..3{
-            //     println!("====================================");
-            //     for upV in &self.state[stateIndex].upValues[0..3]{
-            //             println!("{:?}",upV)
-            //         }
-            //
-            //     println!("====================================");
-            // }
-
             Some(returnedFunc)
         }
     }
@@ -899,11 +890,11 @@ impl<'a> Compiler<'a> {
         for i in 0..upValueCount {
             let upValue = &self.state[stateIndex].upValues[i as usize];
             if(upValue.index == index && upValue.isLocal == isLocal){
-                return i;
+                return i as i32;
             }
         }
 
-        if (upValueCount == u8::MAX as i32) {
+        if (upValueCount == u8::MAX) {
             self.error("Too many closure variables in function.");
             return 0;
         }
@@ -912,7 +903,7 @@ impl<'a> Compiler<'a> {
         self.state[stateIndex].upValues[upValueCount as usize].index = index;
 
         self.state[stateIndex].function.upValueCount = upValueCount+1;
-        upValueCount
+        upValueCount as i32
 
 
     }
@@ -993,6 +984,7 @@ impl<'a> Compiler<'a> {
 
 
         let currentFunction = self.state[self.stateIndex as usize].function;
+       // println!("function name is {} and upvalue count is  {}" ,currentFunction.name.as_str(),currentFunction.upValueCount);
         if(self.stateIndex != 0) {
             self.stateIndex -= 1;
         }
@@ -1096,7 +1088,7 @@ impl<'a> Compiler<'a> {
             //currentChunk: 0,
             parseRules : ParseRule::rules(), // store default on the compiler
             vm,
-            state: [CompilerState::new(); u8::MAX as usize],
+            state: [CompilerState::new(); NESTED_FUNCTIONS_MAX as usize],
             
             stateIndex: 0,
 
