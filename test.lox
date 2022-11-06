@@ -1,11 +1,12 @@
 fun outer() {
- var a = 1;
- var b = 2;
+
   fun middle() {
+  var a = 1;
+   var b = 2;
         var c = 3;
         var d = 4;
     fun inner() {
-      print a + c + b + d;
+      print a + b + c + d;
     }
     inner();
   }

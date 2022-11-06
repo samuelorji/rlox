@@ -33,6 +33,7 @@ pub enum OpCode {
     OP_CLOSURE,
     OP_GET_UPVALUE,
     OP_SET_UPVALUE,
+    OP_CLOSE_UPVALUE
 
 }
 
@@ -69,6 +70,7 @@ impl From<u8> for OpCode{
             25 => OpCode::OP_CLOSURE,
             26 => OpCode::OP_GET_UPVALUE,
             27 => OpCode::OP_SET_UPVALUE,
+            28 => OpCode::OP_CLOSE_UPVALUE,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -235,16 +237,6 @@ impl Chunk {
                 print!("{:-16} {:-4} ", "OP_CLOSURE", constant);
                 printValue(&self.constants.values[constant as usize]);
                 print!("\n");
-
-                // ObjFunction* function = AS_FUNCTION(
-                //           chunk->constants.values[constant]);
-                //       for (int j = 0; j < function->upvalueCount; j++) {
-                //         int isLocal = chunk->code[offset++];
-                //         int index = chunk->code[offset++];
-                //         printf("%04d      |                     %s %d\n",
-                //                offset - 2, isLocal ? "local" : "upvalue", index);
-                //       }
-
                 let function  =  self.constants.values[constant as usize].as_function();
 
                 for _ in 0..function.upValueCount as usize {
@@ -265,6 +257,8 @@ impl Chunk {
             OpCode::OP_SET_UPVALUE => {
                 self.byteInstruction("OP_SET_UP_VALUE", offset)
             }
+
+            OpCode::OP_CLOSE_UPVALUE => self.simpleInstruction("OP_CLOSE_UPVALUE", offset),
         }
 
     }

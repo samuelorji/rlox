@@ -339,10 +339,13 @@ impl VM {
                                 if (isLocal) {
                                     let localValueIndex = (*self.currentFrame).slot + index as usize;
                                     let mut value = {
-                                        let value = self.getAt(localValueIndex);
-                                        value.clone()
+                                        let value = self.getAt_mut(localValueIndex);
+                                        value as *mut Value
                                     };
-                                    closurePtr.offset(i as isize).write(value);
+
+                                    //self.captureUpValue(value);
+                                    let mut off =  closurePtr.offset(i as isize) ;
+                                    off.write(*value);
                                 } else {
                                     let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
                                     let upValuesPtr: *mut Value = self.upValues[closureIndex];
@@ -376,13 +379,16 @@ impl VM {
                          upValuesPtr.offset(slot as isize).write(peeked);
                     }
                 }
+
+                OpCode::OP_CLOSE_UPVALUE => {}
             }
         }
     }
 
-    fn captureUpValue(ptr : *mut Value , value :Value) {
+
+    fn captureUpValue(&mut self, ptr : *mut Value, value :*mut Value) {
         unsafe {
-            ptr.write(value)
+           println!("address of value is {:p}",value)
         };
 
     }
@@ -466,6 +472,9 @@ impl VM {
 
     fn getAt(&self, index: usize) -> &Value {
         &self.stack[index]
+    }
+    fn getAt_mut(&mut self, index: usize) -> &mut Value {
+        &mut self.stack[index]
     }
     fn readOpCode(&mut self) -> OpCode {
         self.readByte().into()

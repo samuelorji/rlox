@@ -218,14 +218,16 @@ pub fn compiled(source : Vec<u8>) {
 #[derive(Copy, Clone,Debug)]
 pub struct Local<'a> {
     name: Token<'a>,
-    depth: i32
+    depth: i32,
+    isCaptured: bool
 }
 
 impl <'a> Local<'a> {
     pub fn empty() -> Self {
         Local {
             name: Token::empty(),
-            depth:0
+            depth:0,
+            isCaptured:false
         }
     }
 
@@ -779,6 +781,19 @@ impl<'a> Compiler<'a> {
         while(self.state[self.stateIndex as usize].localCount > 0 && self.state[self.stateIndex as usize].locals[(self.state[self.stateIndex as usize].localCount - 1) as usize].depth > self.state[self.stateIndex as usize].scopeDepth) {
             // we remove all local variables at the scope depth we just left
             // so for scope depth 2, we remove al local variables with scope depth > 2
+
+            // if (current->locals[current->localCount - 1].isCaptured) {
+            //       emitByte(OP_CLOSE_UPVALUE);
+            //     } else {
+            //       emitByte(OP_POP);
+            //     }
+
+            let localCount = self.state[self.stateIndex as usize].localCount as usize;
+            // if(self.state[self.stateIndex as usize].locals[localCount - 1].isCaptured){
+            //     self.emitOpcode(OP_CLOSE_UPVALUE);
+            // } else {
+            //     self.emitOpcode(OpCode::OP_POP);
+            // }
             self.emitOpcode(OpCode::OP_POP);
             self.state[self.stateIndex as usize].localCount-=1
 
@@ -872,6 +887,8 @@ impl<'a> Compiler<'a> {
             // check local in previous function
             let local = self.resolveLocal(token,stateIndex - 1 );
             if(local != -1) {
+                // compiler->enclosing->locals[local].isCaptured = true;
+                self.state[stateIndex].locals[local as usize].isCaptured = true;
                 return self.addUpValue(local as u8, true, stateIndex)
             }
             // if variable was not found in previous function, recurse to find where it is
