@@ -158,7 +158,7 @@ struct CompilerState<'a >{
     localCount: i32,
     scopeDepth: i32,
     function: ObjFunction,
-    upValues: [UpValue; u8::MAX as usize]
+    upValues: [UpValue; (u8::MAX as usize) + 1]
 }
 
 impl<'a> CompilerState<'a> {
@@ -168,7 +168,7 @@ impl<'a> CompilerState<'a> {
             localCount: 1,
             scopeDepth: 0,
             function: ObjFunction::new(),
-            upValues: [UpValue::new(); u8::MAX as usize]
+            upValues: [UpValue::new(); (u8::MAX as usize) + 1]
         }
     }
 }
@@ -911,7 +911,7 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        if (upValueCount == u8::MAX) {
+        if ((upValueCount as u16) == (u8::MAX as u16 + 1)) {
             self.error("Too many closure variables in function.");
             return 0;
         }

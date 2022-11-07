@@ -34,7 +34,7 @@ pub struct ObjUpValue {
 #[derive(Copy, Clone,PartialEq)]
 pub struct ObjClosure {
     pub function : ObjFunction,
-    pub upValueCount : u8
+    pub upValueCount : u16
 }
 
 impl ObjClosure {
@@ -69,7 +69,7 @@ pub struct ObjFunction {
     pub chunkIndex : u16,
     pub name : ObjString,
     pub functionType: FunctionType,
-    pub upValueCount: u8
+    pub upValueCount: u16
 }
 
 #[derive(Copy,Clone,PartialEq)]

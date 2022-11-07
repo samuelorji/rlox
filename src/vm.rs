@@ -1,4 +1,4 @@
-use std::alloc::{alloc, Layout};
+use std::alloc::{alloc, dealloc, Layout};
 use std::hash::Hasher;
 use crate::{Chunk, OpCode, printValue, ValueArray, compile, Compiler, compiled, Value, Table};
 use crate::object::*;
@@ -31,6 +31,13 @@ impl CallFrame {
         }
     }
 }
+struct StackPtr {
+    ptr : *mut Value
+}
+
+struct UpValue {
+    ptr: *mut Value
+}
 
 pub struct VM {
     frames: [CallFrame; FRAMES_MAX as usize],
@@ -43,7 +50,7 @@ pub struct VM {
     pub strings: Table,
     pub functionChunks: Vec<Chunk>,
     upValues: Vec<Vec<*mut Value>>,
-    openUpValues: Vec<*mut Value>
+    openUpValues: Vec<(StackPtr,UpValue)> // stack pointer to value (heap) pointer
 }
 
 
@@ -67,6 +74,13 @@ impl VM {
         self.strings.free();
         self.functionChunks.iter_mut()
             .for_each(|chunk| chunk.free());
+        self.openUpValues.iter_mut()
+            .for_each(|(_,upValue)| {
+                unsafe {
+                    dealloc(upValue.ptr as *mut u8, Layout::for_value(&Value::empty()))
+                }
+
+            } );
     }
 
     pub fn new() -> Self {
@@ -336,8 +350,8 @@ impl VM {
 
                         }
 
-
                         for i in 0..closure.upValueCount {
+                           // println!("closure up value count for function {} is {}, i is {i}",closure.function.name.as_str() ,closure.upValueCount);
                             let isLocal = self.readByte();
                             let index = self.readByte();
 
@@ -353,7 +367,7 @@ impl VM {
                                     };
 
                                    // println!("closure chunk index is {} , upvalues length is {}" , closure.function.chunkIndex,self.upValues.len());
-                                    self.captureUpValue(closure.function.chunkIndex as usize,valuePtr, value)
+                                    self.captureUpValue(closure.function.chunkIndex as usize,valuePtr, value, i)
 
                                 } else {
                                     let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
@@ -365,6 +379,7 @@ impl VM {
                                 }
                             }
                         }
+
                     }
                 }
 
@@ -389,11 +404,15 @@ impl VM {
                     //     let mut upValuesPtr: *mut Value = self.upValues[closureIndex];
                     //      upValuesPtr.offset(slot as isize).write(peeked);
                     // }
+                   // println!("peeked is {:?}",&peeked);
 
                     unsafe  {
                         let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
                         let mut upValuesPtr: &mut Vec<*mut Value> = &mut self.upValues[closureIndex];
-                        (*upValuesPtr)[slot as usize].write(peeked)
+                        let ptr = (*upValuesPtr)[slot as usize];
+                        let read  = ptr.read();
+                        //println!("Read is {:?} at {:p}, peeked is {:?}",&read,&read, &peeked);
+                        ptr.write(peeked)
                     }
                 }
 
@@ -403,7 +422,7 @@ impl VM {
     }
 
 
-    fn captureUpValue(&mut self, closureIndex : usize , mut valuePtr : *mut Value, value :*mut Value) {
+    fn captureUpValue(&mut self, closureIndex : usize , mut valuePtr : *mut Value, stackPtr :*mut Value, ind : u16) {
         unsafe {
             // check if we have the value already;
 
@@ -413,10 +432,9 @@ impl VM {
 
             if(i != 0) {
                 while (i >= 1) {
-                    let openUpValue = &mut self.openUpValues[i - 1];
-                    if (ptr::eq(*openUpValue, value)) {
-                        //println!("equal address : {:p}, {:p}", *openUpValue, value);
-                        maybeOpenUpValue = (*openUpValue).clone();
+                    let (savedStackPtr, upValue) = &mut self.openUpValues[i - 1];
+                    if (ptr::eq(savedStackPtr.ptr, stackPtr)) {
+                        maybeOpenUpValue = (*upValue).ptr.clone();
                         break
                     }
                     i -= 1;
@@ -427,8 +445,8 @@ impl VM {
             if(maybeOpenUpValue.is_null()){
                 let layout = Layout::for_value(&Value::empty());
                 valuePtr = alloc(layout) as *mut Value;
-                self.openUpValues.push(value.clone());
-                valuePtr.write(*value);
+                self.openUpValues.push((StackPtr { ptr :  stackPtr.clone() } , UpValue { ptr: valuePtr.clone() }));
+                valuePtr.write(*stackPtr);
             } else {
                 valuePtr = maybeOpenUpValue
 
@@ -450,7 +468,11 @@ impl VM {
                 }
             }
             // add ptr to closures value ptrs;
+            //println!("pushing {:p} {}",&valuePtr, i);
+
             &mut self.upValues[closureIndex].push(valuePtr);
+            // &mut self.upValues[closureIndex].push(ptr::null_mut());
+            // self.upValues[closureIndex][ind as usize] = valuePtr;
         };
 
     }
