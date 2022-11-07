@@ -42,7 +42,8 @@ pub struct VM {
     globals: Table,
     pub strings: Table,
     pub functionChunks: Vec<Chunk>,
-    upValues: Vec<*mut Value>
+    upValues: Vec<Vec<*mut Value>>,
+    openUpValues: Vec<*mut Value>
 }
 
 
@@ -79,7 +80,8 @@ impl VM {
             globals: Table::new(),
             strings: Table::new(),
             functionChunks: vec![],
-            upValues: vec![]
+            upValues: vec![],
+           openUpValues: vec![]
         };
 
         let clock = ObjString::from_str("clock");
@@ -108,7 +110,7 @@ impl VM {
                 self.stack.push(Value::obj_value(Obj::FUNCTION(function)));
                 let closure = ObjClosure::new(function);
                 self.call(closure, 0);
-                self.upValues.push(ptr::null_mut());
+                self.upValues.push(vec![]);
                 self.run()
                 //InterpretResult::INTERPRET_OK
             }
@@ -327,29 +329,38 @@ impl VM {
                     let closure = ObjClosure::new(function);
                     self.stack.push(Value::OBJ(Obj::CLOSURE(closure)));
                     if (closure.function.chunkIndex != 0) {
-                        let layout = Layout::array::<Value>(closure.upValueCount as usize).expect("cannot create layout for closures upvalues");
-                        let closurePtr = alloc(layout) as *mut Value;
+                        // push upvalues for closure if not exists
+                        match self.upValues.get(closure.function.chunkIndex as usize){
+                            Some(_) => {}
+                             None =>  self.upValues.push(vec![])
 
-                        self.upValues.push(closurePtr);
+                        }
+
 
                         for i in 0..closure.upValueCount {
                             let isLocal = self.readByte();
                             let index = self.readByte();
+
+                            let mut valuePtr :*mut Value = ptr::null_mut();
+
                             let isLocal = isLocal == 1;
                                 if (isLocal) {
+
                                     let localValueIndex = (*self.currentFrame).slot + index as usize;
                                     let mut value = {
                                         let value = self.getAt_mut(localValueIndex);
                                         value as *mut Value
                                     };
 
-                                    //self.captureUpValue(value);
-                                    let mut off =  closurePtr.offset(i as isize) ;
-                                    off.write(*value);
+                                   // println!("closure chunk index is {} , upvalues length is {}" , closure.function.chunkIndex,self.upValues.len());
+                                    self.captureUpValue(closure.function.chunkIndex as usize,valuePtr, value)
+
                                 } else {
                                     let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
-                                    let upValuesPtr: *mut Value = self.upValues[closureIndex];
-                                    closurePtr.offset(i as isize).write(upValuesPtr.offset(index as isize).read());
+                                    let upValuesPtr:&mut  Vec<*mut Value> = &mut self.upValues[closureIndex];
+                                    let read = (*upValuesPtr)[index as usize].clone();
+                                    valuePtr = read;
+                                    &mut self.upValues[closure.function.chunkIndex as usize].push(valuePtr);
 
                                 }
                             }
@@ -362,8 +373,8 @@ impl VM {
                     let value : Value = unsafe {
 
                         let index = (*self.currentFrame).closure.function.chunkIndex as usize;
-                        let mut upValuesPtr: *mut Value = self.upValues[index];
-                        let value = upValuesPtr.offset(slot as isize).read();
+                        let mut upValuesPtr: &mut Vec<*mut Value> = &mut self.upValues[index];
+                        let value = (*upValuesPtr)[slot as usize].read();
                         value
                     };
 
@@ -373,10 +384,16 @@ impl VM {
                      let slot = self.readByte();
                     let peeked = self.peek(0).clone();
 
+                    // unsafe  {
+                    //     let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
+                    //     let mut upValuesPtr: *mut Value = self.upValues[closureIndex];
+                    //      upValuesPtr.offset(slot as isize).write(peeked);
+                    // }
+
                     unsafe  {
                         let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
-                        let mut upValuesPtr: *mut Value = self.upValues[closureIndex];
-                         upValuesPtr.offset(slot as isize).write(peeked);
+                        let mut upValuesPtr: &mut Vec<*mut Value> = &mut self.upValues[closureIndex];
+                        (*upValuesPtr)[slot as usize].write(peeked)
                     }
                 }
 
@@ -386,9 +403,54 @@ impl VM {
     }
 
 
-    fn captureUpValue(&mut self, ptr : *mut Value, value :*mut Value) {
+    fn captureUpValue(&mut self, closureIndex : usize , mut valuePtr : *mut Value, value :*mut Value) {
         unsafe {
-           println!("address of value is {:p}",value)
+            // check if we have the value already;
+
+            //let mut i : usize = 0;
+            let mut i = self.openUpValues.len();
+            let mut maybeOpenUpValue : *mut Value = ptr::null_mut();
+
+            if(i != 0) {
+                while (i >= 1) {
+                    let openUpValue = &mut self.openUpValues[i - 1];
+                    if (ptr::eq(*openUpValue, value)) {
+                        //println!("equal address : {:p}, {:p}", *openUpValue, value);
+                        maybeOpenUpValue = (*openUpValue).clone();
+                        break
+                    }
+                    i -= 1;
+                };
+            }
+
+            // only create new upvalue it hasn't been captured by another closure
+            if(maybeOpenUpValue.is_null()){
+                let layout = Layout::for_value(&Value::empty());
+                valuePtr = alloc(layout) as *mut Value;
+                self.openUpValues.push(value.clone());
+                valuePtr.write(*value);
+            } else {
+                valuePtr = maybeOpenUpValue
+
+            }
+
+
+            let len = self.upValues.len();
+            if(closureIndex >= len) {
+               // println!("inside if ");
+                let diff = closureIndex - len;
+                for i in 0 ..(diff + 1) {
+                    match self.upValues.get(len) {
+                        Some(_) =>  {}
+                        None =>   {
+                            self.upValues.push(vec![]);
+                        }
+                    }
+
+                }
+            }
+            // add ptr to closures value ptrs;
+            &mut self.upValues[closureIndex].push(valuePtr);
         };
 
     }
