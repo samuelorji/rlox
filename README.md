@@ -98,7 +98,7 @@ result:
 19
 ```
 
-Function recursion:
+### Function recursion:
 ```python
 fun fib(n) {
   if (n < 2) return n;
@@ -112,5 +112,41 @@ print clock() - start;
 result:
 ```bash
 9227465
+```
+
+### Closures
+```python
+fun outer() {
+  var a = 1;
+  var b = 2;
+  fun middle() {
+    var c = 3;
+    var d = 4;
+    fun inner() {
+      print a + c + b + d;
+    }
+    inner();
+  }
+  middle();
+}
+outer();
+```
+
+result:
+```bash
+10
+```
+
+### Classes 
+```python
+class Pair {}
+
+var pair = Pair();
+pair.first = 1;
+pair.second = 2;
+print pair.first + pair.second;
+```
+```bash
+3
 ```
 ## Compiler Internals

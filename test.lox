@@ -1,15 +1,6 @@
-fun outer() {
- var a = 1;
- var b = 2;
-  fun middle() {
-        var c = 3;
-        var d = 4;
-    fun inner() {
-    a = 10;
-      print a + c + b + d;
-    }
-    inner();
-  }
-  middle();
-}
-outer();
+class Pair {}
+
+var pair = Pair();
+pair.first = 1;
+pair.second = 2;
+print pair.first + pair.second;

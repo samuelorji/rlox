@@ -111,6 +111,8 @@ impl ParseRule {
         rules[TokenType::IDENTIFIER.as_usize()] =  createParseRule( Some(variable),None,Precedence::NONE);
         rules[TokenType::OR.as_usize()] =  createParseRule( None,Some(or),Precedence::NONE);
         rules[TokenType::AND.as_usize()] =  createParseRule( None,Some(and),Precedence::NONE);
+        // [TOKEN_DOT]           = {NULL,     dot,    PREC_CALL},
+        rules[TokenType::DOT.as_usize()] =  createParseRule( None,Some(dot),Precedence::CALL);
 
 
         rules
@@ -251,7 +253,10 @@ impl<'a> Compiler<'a> {
     }
 
     fn declaration(&mut self) {
-        if (self.match_type(FUN)) {
+        if (self.match_type(CLASS)){
+            self.class_declaration()
+        }
+        else if (self.match_type(FUN)) {
             self.fun_declaration();
         }
         else if(self.match_type(VAR)){
@@ -263,6 +268,27 @@ impl<'a> Compiler<'a> {
             self.synchronize()
         }
 
+    }
+
+    fn class_declaration(&mut self) {
+        // consume(TOKEN_IDENTIFIER, "Expect class name.");
+        //   uint8_t nameConstant = identifierConstant(&parser.previous);
+        //   declareVariable();
+        //
+        //   emitBytes(OP_CLASS, nameConstant);
+        //   defineVariable(nameConstant);
+        //
+        //   consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+        //   consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+        self.consume(IDENTIFIER,  "Expect class name.");
+        let (constantIndex , className) = self.identifierConstant(true);
+        let className = className.expect("Expect class name");
+        self.declareVariable();
+        self.emitBytes(OP_CLASS.to_u8(),constantIndex);
+        self.define_variable(constantIndex);
+
+        self.consume(LEFT_BRACE, "Expect '{' before class body.");
+        self.consume(RIGHT_BRACE,"Expect '}' after class body." )
     }
 
     fn fun_declaration(&mut self) {
@@ -1243,6 +1269,29 @@ fn and<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
     compiler.parsePrecedence(Precedence::AND);
 
     compiler.patchJump(endJump);
+}
+
+fn dot<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
+    // consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
+    //   uint8_t name = identifierConstant(&parser.previous);
+    //
+    //   if (canAssign && match(TOKEN_EQUAL)) {
+    //     expression();
+    //     emitBytes(OP_SET_PROPERTY, name);
+    //   } else {
+    //     emitBytes(OP_GET_PROPERTY, name);
+    //   }
+
+    compiler.consume(IDENTIFIER,"Expect property name after '.'." );
+    let propertyIndex = compiler.identifierConstant(false).0;
+
+    if(canAssign && compiler.match_type(EQUAL)) {
+        // Assignment operation
+        compiler.expression();
+        compiler.emitBytes(OP_SET_PROPERTY.to_u8(), propertyIndex);
+    } else {
+        compiler.emitBytes(OP_GET_PROPERTY.to_u8(), propertyIndex)
+    }
 }
 pub fn compile(source: Vec<u8>, chunk: &mut Chunk) -> bool {
     ///advance();

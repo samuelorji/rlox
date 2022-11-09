@@ -91,8 +91,12 @@ impl Debug for Value {
                         };
                         f.write_str(&funcName)
                     }
-
-
+                    Obj::CLASS(class @ ObjClass{ .. }) => {
+                        f.write_str(&format!("{:?}",&class))
+                    }
+                    Obj::INSTANCE(instance @ ObjInstance{ .. }) => {
+                        f.write_str(&format!("{:?}", instance))
+                    }
                 }
             }
 
@@ -169,6 +173,34 @@ impl Value {
         }
     }
 
+    pub fn as_class(self) -> ObjClass {
+        match self {
+            Value::OBJ(Obj::CLASS(class @ ObjClass{ ..})) => {
+                class
+            }
+            x => panic!("{:?} is not an class",x)
+        }
+    }
+
+    pub fn as_instance(self) -> ObjInstance {
+        match self {
+            Value::OBJ(Obj::INSTANCE(instance @ ObjInstance{ ..})) => {
+                instance
+            }
+            x => panic!("{:?} is not an instance",x)
+        }
+    }
+
+    pub fn is_instance(&self) -> bool {
+        match self {
+            Value::OBJ(Obj::INSTANCE(ObjInstance{ ..})) => {
+                true
+            }
+            x => false
+        }
+
+    }
+
 
 
     pub fn as_number(self) -> f64 {
@@ -186,6 +218,18 @@ impl Value {
             Value::Empty => true,
              _ => false
         }
+    }
+
+    pub fn make_class(className : ObjString) -> Value {
+        Value::OBJ(Obj::CLASS(ObjClass { name : className}))
+
+    }
+
+    pub fn make_closure(closure : ObjClosure) -> Value {
+        Value::OBJ(Obj::CLOSURE(closure))
+    }
+    pub fn make_instance(instance : ObjInstance) -> Value {
+        Value::OBJ(Obj::INSTANCE(instance))
     }
 
 

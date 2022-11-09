@@ -221,7 +221,7 @@ impl Table {
         }
          */
 
-        let mut index = (key.hash as usize % capacity) as usize;
+        let mut index = (key.hash() as usize % capacity) as usize;
         // let mut tombstone : &mut Entry = &mut Entry::empty();
         let mut tombstone_found = false;
         let mut tomb_stone_index: Option<usize> = None;

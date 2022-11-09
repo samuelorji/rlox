@@ -4,14 +4,16 @@ use std::alloc::Layout;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::{Chunk, FunctionType, Value};
+use crate::{Chunk, FunctionType, Table, Value};
 
 #[derive(Copy, Clone,PartialEq)]
 pub enum Obj {
     STRING(ObjString),
     FUNCTION(ObjFunction),
     NATIVE_FUNCTION(NativeFunction),
-    CLOSURE(ObjClosure)
+    CLOSURE(ObjClosure),
+    CLASS(ObjClass),
+    INSTANCE(ObjInstance)
 
 }
 
@@ -20,17 +22,6 @@ pub struct ObjUpValue {
     location: *mut Value
 }
 
-// impl ObjUpValue {
-//     fn empty() -> Self {
-//         Self {
-//             location: ptr::null_mut()
-//         }
-//     }
-//
-//     fn newUpValue(value : Value) -> Self {
-//         let
-//     }
-// }
 #[derive(Copy, Clone,PartialEq)]
 pub struct ObjClosure {
     pub function : ObjFunction,
@@ -50,6 +41,50 @@ impl ObjClosure {
             function: ObjFunction::new(),
             upValueCount: 0
         }
+    }
+}
+
+#[derive(Copy, Clone,PartialEq)]
+pub struct ObjInstance {
+    class : ObjClass,
+    tableIndex : usize
+}
+
+impl ObjInstance {
+    pub fn new(class: ObjClass, tableIndex : usize) -> ObjInstance {
+        ObjInstance {
+            class,
+            tableIndex
+        }
+    }
+
+    pub fn getTableIndex(&self) -> usize {
+        self.tableIndex
+    }
+}
+
+impl Debug for ObjInstance {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f,"{} instance", self.class.name.as_str())
+    }
+}
+
+#[derive(Copy, Clone,PartialEq)]
+pub struct ObjClass {
+    pub name : ObjString
+}
+
+impl ObjClass {
+    pub fn new(name : ObjString) -> Self {
+        ObjClass {
+            name
+        }
+    }
+}
+
+impl Debug for ObjClass {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<class {}>",self.name.as_str())
     }
 }
 
@@ -123,10 +158,10 @@ impl ObjFunction {
 }
 
 pub struct ObjString {
-    pub length: usize,
-    pub ptr: *mut u8,
-    pub hash : u32,
-    pub is_clone : bool
+    length: usize,
+    ptr: *mut u8,
+    hash : u32,
+    is_clone : bool
 }
 
 impl Copy for ObjString {
@@ -141,6 +176,7 @@ impl Clone for ObjString{
             is_clone: true
         }
     }
+
 }
 
 impl Debug for ObjString {
@@ -164,6 +200,12 @@ impl ObjString {
         self.length == 0 && self.hash == 0 && self.ptr.is_null()
     }
 
+    pub fn hash(&self) -> u32 {
+        self.hash
+    }
+    pub fn length(&self) -> usize {
+        self.length
+    }
     pub fn as_str(&self) -> &str {
         unsafe{ std::str::from_utf8(std::slice::from_raw_parts(self.ptr, self.length)).expect("cannot parse string") }
     }
@@ -284,6 +326,12 @@ impl Debug for Obj {
             Obj::CLOSURE(closure @ObjClosure{ .. }) => {
                 f.write_str(closure.function.name.as_str())
             }
+            Obj::CLASS(class @ ObjClass{ .. }) => {
+                f.write_str(class.name.as_str())
+            }
+            Obj::INSTANCE(instance @ ObjInstance{ .. }) => {
+                f.write_str(&format!("{:?}", instance))
+            }
         }
     }
 }
@@ -302,6 +350,12 @@ impl Obj {
             },
             Obj::CLOSURE(closure @ObjClosure{ .. }) => {
 
+            }
+            Obj::CLASS( class @ ObjClass{ ..}) => {
+                class.name.free()
+            }
+            Obj::INSTANCE(instance @ ObjInstance{ .. }) => {
+                instance.class.name.free()
             }
 
         }

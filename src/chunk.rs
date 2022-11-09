@@ -33,7 +33,11 @@ pub enum OpCode {
     OP_CLOSURE,
     OP_GET_UPVALUE,
     OP_SET_UPVALUE,
-    OP_CLOSE_UPVALUE
+    OP_CLOSE_UPVALUE,
+    OP_CLASS,
+    OP_SET_PROPERTY,
+    OP_GET_PROPERTY
+
 
 }
 
@@ -71,6 +75,9 @@ impl From<u8> for OpCode{
             26 => OpCode::OP_GET_UPVALUE,
             27 => OpCode::OP_SET_UPVALUE,
             28 => OpCode::OP_CLOSE_UPVALUE,
+            29 => OpCode::OP_CLASS,
+            30 => OpCode::OP_SET_PROPERTY,
+            31 => OpCode::OP_GET_PROPERTY,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -259,6 +266,10 @@ impl Chunk {
             }
 
             OpCode::OP_CLOSE_UPVALUE => self.simpleInstruction("OP_CLOSE_UPVALUE", offset),
+            OpCode::OP_CLASS => self.constantInstruction("OP_CLASS", offset),
+
+            OpCode::OP_SET_PROPERTY => self.constantInstruction("OP_SET_PROPERTY", offset),
+            OpCode::OP_GET_PROPERTY => self.constantInstruction("OP_GET_PROPERTY", offset),
         }
 
     }

@@ -50,7 +50,8 @@ pub struct VM {
     pub strings: Table,
     pub functionChunks: Vec<Chunk>,
     upValues: Vec<Vec<*mut Value>>,
-    openUpValues: Vec<(StackPtr,UpValue)> // stack pointer to value (heap) pointer
+    openUpValues: Vec<(StackPtr,UpValue)>, // stack pointer to value (heap) pointer
+    instanceTables: Vec<Table>
 }
 
 
@@ -81,6 +82,8 @@ impl VM {
                 }
 
             } );
+        self.instanceTables.iter_mut()
+            .for_each(|table| table.free());
     }
 
     pub fn new() -> Self {
@@ -95,7 +98,8 @@ impl VM {
             strings: Table::new(),
             functionChunks: vec![],
             upValues: vec![],
-           openUpValues: vec![]
+           openUpValues: vec![],
+           instanceTables: vec![]
         };
 
         let clock = ObjString::from_str("clock");
@@ -341,7 +345,7 @@ impl VM {
                     unsafe {
                     let function = self.readConstant().as_function();
                     let closure = ObjClosure::new(function);
-                    self.stack.push(Value::OBJ(Obj::CLOSURE(closure)));
+                    self.stack.push(Value::make_closure(closure));
                     if (closure.function.chunkIndex != 0) {
                         // push upvalues for closure if not exists
                         match self.upValues.get(closure.function.chunkIndex as usize){
@@ -417,6 +421,55 @@ impl VM {
                 }
 
                 OpCode::OP_CLOSE_UPVALUE => {}
+                OpCode::OP_CLASS => {
+                    let className = self.readConstant().as_obj_string();
+                    self.stack.push(Value::make_class(className))
+                }
+
+                OpCode::OP_SET_PROPERTY => {
+                    // ObjInstance* instance = AS_INSTANCE(peek(1));
+                    //         tableSet(&instance->fields, READ_STRING(), peek(0));
+                    //         Value value = pop();
+                    //         pop();
+                    //         push(value);
+                    //         break;
+
+                    // When this executes, the top of the stack has the instance
+                    // whose field is being set and above that, the value to be stored.
+                    let shouldBeInstance = self.peek(1);
+                    if (!shouldBeInstance.is_instance()) {
+                        self.runtime_error("Only instances have fields.");
+                        return InterpretResult::INTERPRET_RUNTIME_ERROR;
+                    } else {
+                        let instance = shouldBeInstance.clone().as_instance();
+                        let name = self.readConstant().as_obj_string();
+                        let value = self.peek(0).clone();
+                        let instanceFieldTable = &mut self.instanceTables[instance.getTableIndex()];
+                        instanceFieldTable.set(name,value);
+                        let value = self.pop_stack();
+                        self.pop_stack();
+                        self.stack.push(value)
+                    }
+
+                }
+                OpCode::OP_GET_PROPERTY => {
+                    let peekedValue = self.peek(0);
+                    if (!peekedValue.is_instance()) {
+                        self.runtime_error("Only instances have properties.");
+                        return InterpretResult::INTERPRET_RUNTIME_ERROR;
+                    } else {
+                        let instance = peekedValue.clone().as_instance();
+                        let name = self.readConstant().as_obj_string();
+                        let instanceFieldTable = &mut self.instanceTables[instance.getTableIndex()];
+                        match instanceFieldTable.get(&name) {
+                            None => self.runtime_error(&format!("Undefined property {}.", name.as_str())),
+                            Some(value) => {
+                                self.stack.pop(); // remove instance
+                                self.stack.push(value.clone())
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -481,6 +534,21 @@ impl VM {
         match callee {
             Value::OBJ(Obj::CLOSURE(closure @ObjClosure{ .. })) => {
                 self.call(closure, argCount)
+            }
+            Value::OBJ(Obj::CLASS(class @ObjClass {..})) => {
+                // case OBJ_CLASS: {
+                //         ObjClass* klass = AS_CLASS(callee);
+                //         vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(klass));
+                //         return true;
+                //       }
+                let taleIndex = self.instanceTables.len();
+                self.instanceTables.push(Table::new());
+                let instance = Value::make_instance(ObjInstance::new(class, taleIndex));
+                let instanceIndex = self.stack.len() - 1  - argCount as usize;
+                self.stack[instanceIndex] = instance;
+
+                return true
+
             }
 
             Value::OBJ(Obj::NATIVE_FUNCTION(native @ NativeFunction { .. })) => {
@@ -623,37 +691,29 @@ impl VM {
                     Err(b) => self.stack.push(Value::bool_value(b)),
                 }
             }
-            (Value::OBJ(Obj::STRING(first @ ObjString { length, ptr, .. })), Value::OBJ(Obj::STRING(second @ ObjString { length: la, ptr: ptrB, .. }))) => {
+            (Value::OBJ(Obj::STRING(first @ ObjString { .. })), Value::OBJ(Obj::STRING(second @ ObjString { .. }))) => {
                 unsafe {
-                    let str1 = std::slice::from_raw_parts(ptr, length);
-                    let str2 = std::slice::from_raw_parts(ptrB, la);
-                    //println!("str1 is {:?}\n and str2 is {:?}",std::str::from_utf8(str1),std::str::from_utf8(str2) );
-                    let result = ObjString::concat_buffers(str1, str2);
+                    let result = ObjString::concat_buffers(first.as_bytes(), second.as_bytes());
                     let cloned_result = result.clone();
                     self.strings.set(result, Value::nil_value());
                     self.stack.push(Value::obj_value(Obj::STRING(cloned_result)));
+                }
+            }
+            (Value::OBJ(Obj::STRING(first @ ObjString {  .. })), Value::Number(a)) => {
+                unsafe {
+                    let str1 = first.as_bytes();
+                    let b = format!("{}", a);
+                    let result = ObjString::concat_buffers(str1, b.as_bytes());
+                    let cloned_result = result.clone();
+                    self.strings.set(result, Value::nil_value());
+                    self.stack.push(Value::obj_value(Obj::STRING(cloned_result)));
+                }
+            }
+            (Value::OBJ(Obj::STRING(first @ ObjString {  .. })), Value::BigNumber(a)) => {
+                unsafe {
 
-                    // self.objects.push(_a);
-                    // self.objects.push(_b);
-                    // first.free();
-                    // second.free();
-                }
-            }
-            (Value::OBJ(Obj::STRING(first @ ObjString { length, ptr, .. })), Value::Number(a)) => {
-                unsafe {
-                    let str1 = std::slice::from_raw_parts(ptr, length);
                     let b = format!("{}", a);
-                    let result = ObjString::concat_buffers(str1, b.as_bytes());
-                    let cloned_result = result.clone();
-                    self.strings.set(result, Value::nil_value());
-                    self.stack.push(Value::obj_value(Obj::STRING(cloned_result)));
-                }
-            }
-            (Value::OBJ(Obj::STRING(first @ ObjString { length, ptr, .. })), Value::BigNumber(a)) => {
-                unsafe {
-                    let str1 = std::slice::from_raw_parts(ptr, length);
-                    let b = format!("{}", a);
-                    let result = ObjString::concat_buffers(str1, b.as_bytes());
+                    let result = ObjString::concat_buffers(first.as_bytes(), b.as_bytes());
                     let cloned_result = result.clone();
                     self.strings.set(result, Value::nil_value());
                     self.stack.push(Value::obj_value(Obj::STRING(cloned_result)));
