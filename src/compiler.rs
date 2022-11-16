@@ -3,7 +3,7 @@ use std::alloc;
 use std::alloc::Layout;
 use std::fmt::format;
 use crate::scanner::*;
-use crate::{Chunk, ObjFunction, OpCode, Value, VM};
+use crate::{Chunk, ObjClass, ObjFunction, OpCode, Value, VM};
 use crate::object::{Obj, ObjString};
 use crate::OpCode::*;
 use crate::scanner::TokenType::*;
@@ -111,8 +111,9 @@ impl ParseRule {
         rules[TokenType::IDENTIFIER.as_usize()] =  createParseRule( Some(variable),None,Precedence::NONE);
         rules[TokenType::OR.as_usize()] =  createParseRule( None,Some(or),Precedence::NONE);
         rules[TokenType::AND.as_usize()] =  createParseRule( None,Some(and),Precedence::NONE);
-        // [TOKEN_DOT]           = {NULL,     dot,    PREC_CALL},
         rules[TokenType::DOT.as_usize()] =  createParseRule( None,Some(dot),Precedence::CALL);
+        // [TOKEN_THIS]          = {this_,    NULL,   PREC_NONE},
+        rules[TokenType::THIS.as_usize()] =  createParseRule( Some(this),None,Precedence::NONE);
 
 
         rules
@@ -151,7 +152,9 @@ impl<'a> Parser<'a> {
 #[derive(PartialEq,Copy, Clone)]
  pub enum FunctionType {
     FUNCTION,
-    SCRIPT
+    SCRIPT,
+    METHOD,
+    INITIALIZER
 }
 
 #[derive(Copy, Clone)]
@@ -183,8 +186,22 @@ pub struct Compiler<'a> {
     vm: &'a mut VM,
     state: [CompilerState<'a>; NESTED_FUNCTIONS_MAX as usize], // use to hold nested functions declarations
     stateIndex: u8,
+    nestedClasses: [ClassCompiler; 10],
+    nestedClassIndex : u8
 }
 
+#[derive(Copy, Clone)]
+pub struct ClassCompiler {
+
+}
+
+impl ClassCompiler {
+    pub fn empty() -> Self {
+        Self {
+
+        }
+    }
+}
 #[derive(Copy,Clone,Debug)]
 pub struct UpValue {
     index: u8,
@@ -233,6 +250,14 @@ impl <'a> Local<'a> {
         }
     }
 
+    pub fn this() -> Self {
+        Local {
+            name: Token::this(),
+            depth:0,
+            isCaptured:false
+        }
+    }
+
 }
 
 
@@ -271,24 +296,41 @@ impl<'a> Compiler<'a> {
     }
 
     fn class_declaration(&mut self) {
-        // consume(TOKEN_IDENTIFIER, "Expect class name.");
-        //   uint8_t nameConstant = identifierConstant(&parser.previous);
-        //   declareVariable();
-        //
-        //   emitBytes(OP_CLASS, nameConstant);
-        //   defineVariable(nameConstant);
-        //
-        //   consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
-        //   consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
         self.consume(IDENTIFIER,  "Expect class name.");
         let (constantIndex , className) = self.identifierConstant(true);
-        let className = className.expect("Expect class name");
+        let className = self.parser.previous;
         self.declareVariable();
         self.emitBytes(OP_CLASS.to_u8(),constantIndex);
         self.define_variable(constantIndex);
 
+       // self.nestedClasses =
+        self.nestedClassIndex +=1;
+        self.named_variable(false, Some(className));
         self.consume(LEFT_BRACE, "Expect '{' before class body.");
-        self.consume(RIGHT_BRACE,"Expect '}' after class body." )
+        while (!self.check_current_type(RIGHT_BRACE) && !self.check_current_type(EOF)) {
+            self.method();
+        }
+        self.consume(RIGHT_BRACE,"Expect '}' after class body." );
+        self.emitOpcode(OP_POP);
+        self.nestedClassIndex -=1;
+    }
+    fn method(&mut self) {
+        // consume(TOKEN_IDENTIFIER, "Expect method name.");
+        //   uint8_t constant = identifierConstant(&parser.previous);
+        //   emitBytes(OP_METHOD, constant);
+
+        self.consume(IDENTIFIER, "Expect method name.");
+
+        let (constantIndex, functionName) = self.identifierConstant(true);
+        let functionName = functionName.expect("expect function name");
+        let functionType = if (functionName.equalsStr("init")) {
+            FunctionType::INITIALIZER
+        } else {
+            FunctionType::METHOD
+        };
+        self.function(functionType, functionName);
+        self.emitBytes(OP_METHOD.to_u8(), constantIndex);
+
     }
 
     fn fun_declaration(&mut self) {
@@ -390,6 +432,14 @@ impl<'a> Compiler<'a> {
             // set state to empty
             self.state[self.stateIndex as usize] = CompilerState::new();
             self.state[self.stateIndex as usize].function = currentFunction;
+
+            // if(initState.function.functionType != FunctionType::FUNCTION) {
+            //             initState.locals[0].name = Token::this();
+            //         }
+
+            if(functionType != FunctionType::FUNCTION) {
+                self.state[self.stateIndex as usize].locals[0].name = Token::this()
+            }
         }
     }
 
@@ -533,19 +583,22 @@ impl<'a> Compiler<'a> {
     }
 
     fn get_interned_string(&mut self, string : ObjString) -> ObjString {
-        match self.vm.strings.get_key(&string) {
-            None => {
-                let cloned_string = string.clone();
-                self.vm.strings.set(string, Value::nil_value());
-                cloned_string
-            }
-            Some(internedString) => {
-                // free allocated string, return clone instead
-                string.free();
-                internedString.clone()
-            }
-        }
+        // match self.vm.strings.get_key(&string) {
+        //     None => {
+        //         let cloned_string = string.clone();
+        //         self.vm.strings.set(string, Value::nil_value());
+        //         cloned_string
+        //     }
+        //     Some(internedString) => {
+        //         // free allocated string, return clone instead
+        //         string.free();
+        //         internedString.clone()
+        //     }
+        // }
+
+        self.vm.getInternedString(string)
     }
+
 
     fn synchronize(&mut self) {
         self.parser.panicMode = false;
@@ -616,13 +669,18 @@ impl<'a> Compiler<'a> {
 
     fn return_statement(&mut self) {
         let currentFunction = &self.state[self.stateIndex as usize].function;
-        if(currentFunction.functionType == FunctionType::SCRIPT) {
+        let currentFunctionType = currentFunction.functionType;
+        if(currentFunctionType == FunctionType::SCRIPT) {
             self.error("Cannot return from top level code");
         }
 
         if(self.match_type(SEMICOLON)){
             self.emitReturn()
         } else {
+            // We report an error if a return statement in an initializer has a value
+            if(currentFunctionType == FunctionType::INITIALIZER) {
+                self.error("Can't return a value from an initializer.");
+            }
             self.expression();
             self.consume(SEMICOLON, "Expect ':' after return value");
             self.emitOpcode(OP_RETURN);
@@ -858,7 +916,10 @@ impl<'a> Compiler<'a> {
             // walk backwards from the local stack and if any local matches the token we're looking for
             // we return the index
             let local = &self.state[stateIndex].locals[i as usize];
+           // println!("local name is {} and token is {}",&local.name.lexeme(), &token.lexeme());
+
             if (local.name == token){
+              //  println!("same::::: local name is {} and token is {}",&local.name.lexeme(), &token.lexeme());
                 if (local.depth == -1) {
                     self.error("Can't read local variable in its own initializer.");
                 }
@@ -870,18 +931,23 @@ impl<'a> Compiler<'a> {
         return -1
 
     }
-    pub fn named_variable(&mut self,canAssign :bool) {
+    pub fn named_variable(&mut self,canAssign :bool,token : Option<Token<'a>>) {
 
         let mut getOp : OpCode = OpCode::OP_NIL;
         let mut setOp : OpCode = OpCode::OP_NIL;
 
-        let mut arg = self.resolveLocal(self.parser.previous,self.stateIndex as usize);
+        let toResolve = token.unwrap_or_else(|| {self.parser.previous});
+
+
+
+        let mut arg = self.resolveLocal(toResolve,self.stateIndex as usize);
       //  println!("arg is {arg}");
+
         if(arg != -1){
             getOp = OpCode::OP_GET_LOCAL;
             setOp= OpCode::OP_SET_LOCAL;
         } else if {
-            arg = self.resolveUpValue(self.parser.previous, self.stateIndex as usize);
+            arg = self.resolveUpValue(toResolve, self.stateIndex as usize);
             arg != -1
         } {
             getOp = OP_GET_UPVALUE;
@@ -1062,8 +1128,21 @@ impl<'a> Compiler<'a> {
 
     pub fn emitReturn(&mut self) {
         let currentFunction = &self.state[self.stateIndex as usize].function;
-        self.vm.functionChunks[currentFunction.chunkIndex as usize].write(OP_NIL.to_u8(), self.parser.previous.line);
-        self.vm.functionChunks[currentFunction.chunkIndex as usize].write(OP_RETURN.to_u8(), self.parser.previous.line);
+        let currentFunctionChunkIndex = currentFunction.chunkIndex as usize;
+
+        // In an initializer, instead of pushing nil onto the stack before returning,
+        // we load slot zero, which contains the instance.
+        // This emitReturn() function is also called when compiling a return statement
+        // without a value, so this also correctly handles cases where the user does an
+        // early return inside the initializer.
+
+        if (currentFunction.functionType == FunctionType::INITIALIZER) {
+            self.emitBytes(OP_GET_LOCAL.to_u8(), 0);
+        } else {
+            self.vm.functionChunks[currentFunctionChunkIndex].write(OP_NIL.to_u8(), self.parser.previous.line);
+        }
+
+        self.vm.functionChunks[currentFunctionChunkIndex].write(OP_RETURN.to_u8(), self.parser.previous.line);
     }
 
     pub fn expression(&mut self) {
@@ -1134,11 +1213,19 @@ impl<'a> Compiler<'a> {
             state: [CompilerState::new(); NESTED_FUNCTIONS_MAX as usize],
             
             stateIndex: 0,
+            nestedClasses: [ClassCompiler::empty(); 10],
+            nestedClassIndex: 0 // starts at 1
+
 
         };
         
-        // let initState = &mut compiler.state[0];
-        // initState.localCount = 1;
+        let initState = &mut compiler.state[0];
+        if(initState.function.functionType != FunctionType::FUNCTION) {
+            initState.locals[0].name = Token::this();
+        } else {
+            initState.locals[0].name = Token::empty();
+        }
+        initState.localCount = 1;
         
         compiler
     }
@@ -1227,7 +1314,22 @@ fn string<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
 }
 fn variable<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
    // println!("calling named variable");
-    compiler.named_variable(canAssign)
+    compiler.named_variable(canAssign,None)
+}
+
+fn this<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
+    // println!("calling named variable");
+    // if (currentClass == NULL) {
+    //     error("Can't use 'this' outside of a class.");
+    //     return;
+    //   }
+
+    //println!("thi func called");
+    if(compiler.nestedClassIndex < 1) {
+        compiler.error("Can't use 'this' outside of a class.");
+        return;
+    }
+    variable(compiler, false)
 }
 
 fn call<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
@@ -1289,7 +1391,16 @@ fn dot<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
         // Assignment operation
         compiler.expression();
         compiler.emitBytes(OP_SET_PROPERTY.to_u8(), propertyIndex);
-    } else {
+    } else if (compiler.match_type(LEFT_PAREN)) {
+       // else if (match(TOKEN_LEFT_PAREN)) {
+        //     uint8_t argCount = argumentList();
+        //     emitBytes(OP_INVOKE, name);
+        //     emitByte(argCount);
+        //   }
+        let argCount  = compiler.argumentList();
+        compiler.emitBytes(OP_INVOKE.to_u8(),propertyIndex );
+        compiler.emitByte(argCount)
+    }else {
         compiler.emitBytes(OP_GET_PROPERTY.to_u8(), propertyIndex)
     }
 }

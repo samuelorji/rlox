@@ -36,7 +36,9 @@ pub enum OpCode {
     OP_CLOSE_UPVALUE,
     OP_CLASS,
     OP_SET_PROPERTY,
-    OP_GET_PROPERTY
+    OP_GET_PROPERTY,
+    OP_METHOD,
+    OP_INVOKE
 
 
 }
@@ -78,6 +80,8 @@ impl From<u8> for OpCode{
             29 => OpCode::OP_CLASS,
             30 => OpCode::OP_SET_PROPERTY,
             31 => OpCode::OP_GET_PROPERTY,
+            32 => OpCode::OP_METHOD,
+            33 => OpCode::OP_INVOKE,
             _ => panic!( "unknown opcode {}", x)
         }
 
@@ -270,6 +274,10 @@ impl Chunk {
 
             OpCode::OP_SET_PROPERTY => self.constantInstruction("OP_SET_PROPERTY", offset),
             OpCode::OP_GET_PROPERTY => self.constantInstruction("OP_GET_PROPERTY", offset),
+
+            OpCode::OP_METHOD => self.constantInstruction("OP_METHOD", offset),
+
+            OpCode::OP_INVOKE => self.invokeInstruction("OP_INVOKE", offset)
         }
 
     }
@@ -290,6 +298,25 @@ impl Chunk {
         printValue(&value);
         print!("'\n");
         offset + 2 // this should return the location of the next opcode
+    }
+
+    fn invokeInstruction(&self,name : &str, offset : usize) -> usize {
+
+        // uint8_t constant = chunk->code[offset + 1];
+        //   uint8_t argCount = chunk->code[offset + 2];
+        //   printf("%-16s (%d args) %4d '", name, argCount, constant);
+        //   printValue(chunk->constants.values[constant]);
+        //   printf("'\n");
+        //   return offset + 3;
+
+        let constantIndex = self.code[offset + 1];
+        let argCount = self.code[offset + 2];
+        print!("{name:-16} ({argCount} args){constantIndex:4} '");
+        // get the value in the value array at constant index
+        let value = self.constants.values[constantIndex as usize];
+        printValue(&value);
+        print!("'\n");
+        offset + 3 // this should return the location of the next opcode
     }
 
 

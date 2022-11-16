@@ -13,8 +13,44 @@ pub enum Obj {
     NATIVE_FUNCTION(NativeFunction),
     CLOSURE(ObjClosure),
     CLASS(ObjClass),
-    INSTANCE(ObjInstance)
+    INSTANCE(ObjInstance),
+    BOUND_METHOD(ObjBoundMethod)
 
+}
+
+#[derive(Copy, Clone)]
+pub struct ObjBoundMethod {
+    receiver : *mut Value,
+    method : ObjClosure
+}
+impl Debug for ObjBoundMethod {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("{}", self.method.function.name.as_str()))
+    }
+}
+impl PartialEq for ObjBoundMethod {
+    fn eq(&self, other: &Self) -> bool {
+        ptr::eq(self,other)
+    }
+}
+
+impl ObjBoundMethod {
+    pub fn getMethodName(&self) -> &str {
+        self.method.function.name.as_str()
+    }
+    pub fn getClosure(&self) -> ObjClosure {
+        self.method
+    }
+    pub fn setReceiver(&mut self, valuePtr : *mut Value) {
+        self.receiver = valuePtr
+    }
+
+    pub fn new(receiver : *mut Value, method : ObjClosure) -> Self {
+        Self {
+            receiver,
+            method
+        }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -61,6 +97,9 @@ impl ObjInstance {
     pub fn getTableIndex(&self) -> usize {
         self.tableIndex
     }
+    pub fn getClass(&self) -> ObjClass {
+        self.class
+    }
 }
 
 impl Debug for ObjInstance {
@@ -71,13 +110,24 @@ impl Debug for ObjInstance {
 
 #[derive(Copy, Clone,PartialEq)]
 pub struct ObjClass {
-    pub name : ObjString
+    name : ObjString,
+    methodTableIndex : usize
 }
 
 impl ObjClass {
-    pub fn new(name : ObjString) -> Self {
+    pub fn new(name : ObjString, methodTableIndex: usize) -> Self {
         ObjClass {
-            name
+            name,
+            methodTableIndex
+        }
+    }
+    pub fn getMethodTableIndex(&self) -> usize {
+        self.methodTableIndex
+    }
+    pub fn empty() -> Self {
+        Self {
+            name : ObjString::empty(),
+            methodTableIndex: 0
         }
     }
 }
@@ -191,6 +241,13 @@ impl ObjString {
             hash:0,
             ptr: ptr::null_mut(),
             is_clone: false
+        }
+    }
+    pub fn equalsStr(&self, other : &str) -> bool {
+        if(self.length != other.len()){
+            return  false
+        } else {
+            self.as_bytes() == other.as_bytes()
         }
     }
     pub fn is_clone(&self) -> bool {
@@ -332,6 +389,10 @@ impl Debug for Obj {
             Obj::INSTANCE(instance @ ObjInstance{ .. }) => {
                 f.write_str(&format!("{:?}", instance))
             }
+
+            Obj::BOUND_METHOD(method @ ObjBoundMethod{ ..}) => {
+                f.write_str(&format!("{:?}", method))
+            }
         }
     }
 }
@@ -357,6 +418,12 @@ impl Obj {
             Obj::INSTANCE(instance @ ObjInstance{ .. }) => {
                 instance.class.name.free()
             }
+
+            Obj::BOUND_METHOD(method @ ObjBoundMethod{ ..}) => {
+                method.method.function.name.free()
+
+            }
+
 
         }
     }

@@ -6,6 +6,7 @@ use std::ptr;
 use std::thread::sleep;
 use crate::vm::InterpretResult::INTERPRET_COMPILE_ERROR;
 use std::time::Instant;
+use crate::Value::OBJ;
 
 // ip is instruction pointer,
 ///We use an actual real C pointer pointing right into the middle of the bytecode array instead of something
@@ -51,7 +52,9 @@ pub struct VM {
     pub functionChunks: Vec<Chunk>,
     upValues: Vec<Vec<*mut Value>>,
     openUpValues: Vec<(StackPtr,UpValue)>, // stack pointer to value (heap) pointer
-    instanceTables: Vec<Table>
+    instanceTables: Vec<Table>,
+    methodTables: Vec<Table>,
+    initString: ObjString
 }
 
 
@@ -84,6 +87,8 @@ impl VM {
             } );
         self.instanceTables.iter_mut()
             .for_each(|table| table.free());
+        self.methodTables.iter_mut()
+            .for_each(|table| table.free());
     }
 
     pub fn new() -> Self {
@@ -99,13 +104,17 @@ impl VM {
             functionChunks: vec![],
             upValues: vec![],
            openUpValues: vec![],
-           instanceTables: vec![]
+           instanceTables: vec![],
+           methodTables: vec![],
+           initString: ObjString::empty()
         };
 
         let clock = ObjString::from_str("clock");
         let clockClone = clock.clone();
         vm.strings.set(clock, Value::empty());
         vm.define_native(clockClone);
+        let initString = ObjString::from_str("init");
+        vm.initString = vm.getInternedString(initString);
         vm
     }
 
@@ -402,14 +411,6 @@ impl VM {
                 OpCode::OP_SET_UPVALUE => {
                      let slot = self.readByte();
                     let peeked = self.peek(0).clone();
-
-                    // unsafe  {
-                    //     let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
-                    //     let mut upValuesPtr: *mut Value = self.upValues[closureIndex];
-                    //      upValuesPtr.offset(slot as isize).write(peeked);
-                    // }
-                   // println!("peeked is {:?}",&peeked);
-
                     unsafe  {
                         let closureIndex = (*self.currentFrame).closure.function.chunkIndex as usize;
                         let mut upValuesPtr: &mut Vec<*mut Value> = &mut self.upValues[closureIndex];
@@ -423,16 +424,12 @@ impl VM {
                 OpCode::OP_CLOSE_UPVALUE => {}
                 OpCode::OP_CLASS => {
                     let className = self.readConstant().as_obj_string();
-                    self.stack.push(Value::make_class(className))
+                    let methodTableIndex = self.methodTables.len();
+                    self.methodTables.push(Table::new());
+                    self.stack.push(Value::make_class(className,methodTableIndex))
                 }
 
                 OpCode::OP_SET_PROPERTY => {
-                    // ObjInstance* instance = AS_INSTANCE(peek(1));
-                    //         tableSet(&instance->fields, READ_STRING(), peek(0));
-                    //         Value value = pop();
-                    //         pop();
-                    //         push(value);
-                    //         break;
 
                     // When this executes, the top of the stack has the instance
                     // whose field is being set and above that, the value to be stored.
@@ -459,10 +456,17 @@ impl VM {
                         return InterpretResult::INTERPRET_RUNTIME_ERROR;
                     } else {
                         let instance = peekedValue.clone().as_instance();
+
                         let name = self.readConstant().as_obj_string();
                         let instanceFieldTable = &mut self.instanceTables[instance.getTableIndex()];
                         match instanceFieldTable.get(&name) {
-                            None => self.runtime_error(&format!("Undefined property {}.", name.as_str())),
+                            None => {
+                                // assume its a method
+
+                                if(!self.bindMethod(instance.getClass(), name)){
+                                    return InterpretResult::INTERPRET_RUNTIME_ERROR
+                                }
+                            },
                             Some(value) => {
                                 self.stack.pop(); // remove instance
                                 self.stack.push(value.clone())
@@ -470,8 +474,168 @@ impl VM {
                         }
                     }
                 }
+
+                OpCode::OP_METHOD => {
+                    let methodName = self.readConstant().as_obj_string();
+                    self.defineMethod(methodName);
+
+                }
+
+                OpCode::OP_INVOKE => {
+                    // ObjString* method = READ_STRING();
+                    //         int argCount = READ_BYTE();
+                    //         if (!invoke(method, argCount)) {
+                    //           return INTERPRET_RUNTIME_ERROR;
+                    //         }
+                    //         frame = &vm.frames[vm.frameCount - 1];
+                    //         break;
+
+                    unsafe {
+                        let method = self.readConstant().as_obj_string();
+                        let argCount = self.readByte();
+
+                        if(!self.invoke(method,argCount)){
+                            return InterpretResult::INTERPRET_RUNTIME_ERROR
+                        }
+
+
+                        let currentFrameIndex = self.frameCount - 1;
+                        self.currentFrame = &mut self.frames[currentFrameIndex] as *mut CallFrame;
+
+                    }
+                }
             }
         }
+    }
+
+    fn invoke(&mut self, name : ObjString, argCount : u8) -> bool {
+        // static bool invoke(ObjString* name, int argCount) {
+        //   Value receiver = peek(argCount);
+        //   ObjInstance* instance = AS_INSTANCE(receiver);
+        //   return invokeFromClass(instance->klass, name, argCount);
+        // }
+
+        let receiver = self.peek(argCount as usize);
+
+        // if (!IS_INSTANCE(receiver)) {
+        //     runtimeError("Only instances have methods.");
+        //     return false;
+        //   }
+
+        if (!receiver.is_instance()){
+            self.runtime_error("Only instances have methods.");
+            return false
+        }
+
+        let instance = receiver.as_instance();
+        // Value value;
+        //   if (tableGet(&instance->fields, name, &value)) {
+        //     vm.stackTop[-argCount - 1] = value;
+        //     return callValue(value, argCount);
+        //   }
+
+        let result: Option<Value> = self.instanceTables[instance.getTableIndex()].get(&name).map(|valueRef| valueRef.clone());
+
+        match result {
+            None => {}
+            Some(value) => {
+                let index = self.stack.len() - 1 - (argCount as usize);
+                self.stack[index] = value;
+                return self.callValue(value, argCount)
+
+            }
+        }
+
+       //' println!("{:?}",result);
+        // match self.instanceTables[instance.getTableIndex()].get(&name){
+        //     None => {}
+        //     Some(value) => {
+        //         let index = self.stack.len() - 1 - (argCount as usize);
+        //
+        //         self.stack[index] = value.clone();
+        //         return self.callValue(value.clone(), argCount)
+        //
+        //     }
+        // }
+        self.invokeFromClass(instance.getClass(),name,argCount)
+
+
+    }
+
+    fn invokeFromClass(&mut self, klass : ObjClass, name : ObjString, argCount : u8) -> bool {
+        // static bool invokeFromClass(ObjClass* klass, ObjString* name,
+        //                             int argCount) {
+        //   Value method;
+        //   if (!tableGet(&klass->methods, name, &method)) {
+        //     runtimeError("Undefined property '%s'.", name->chars);
+        //     return false;
+        //   }
+        //   return call(AS_CLOSURE(method), argCount);
+        // }
+
+        match self.methodTables[klass.getMethodTableIndex()].get(&name){
+            None => {
+                self.runtime_error(&format!("Undefined property '{}'.",name.as_str()));
+                return false
+            }
+            Some(value) => {
+                let method = value.clone().as_closure();
+                self.call(method, argCount )
+            }
+        }
+    }
+
+    fn bindMethod(&mut self, klass: ObjClass, name : ObjString) -> bool {
+
+        // Value method;
+        //   if (!tableGet(&klass->methods, name, &method)) {
+        //     runtimeError("Undefined property '%s'.", name->chars);
+        //     return false;
+        //   }
+        //
+        //   ObjBoundMethod* bound = newBoundMethod(peek(0),
+        //                                          AS_CLOSURE(method));
+        //   pop();
+        //   push(OBJ_VAL(bound));
+        //   return true;
+
+        let peeked = self.peek(0).clone();
+        println!("binding value  to {:?}",&peeked);
+        match self.methodTables[klass.getMethodTableIndex()].get(&name) {
+            None => {
+                self.runtime_error(&format!("Undefined property {}.", name.as_str()));
+                return false
+            }
+            Some(value) => {
+                let method = value.clone();
+                println!("method found");
+
+                let bound = ObjBoundMethod::new(&mut (self.peek(0).clone()) as *mut Value, method.as_closure());
+
+                self.pop_stack();
+                self.stack.push(Value::makeBoundMethod(bound))
+            }
+        }
+
+        return true
+
+
+
+    }
+
+    fn defineMethod(&mut self, methodName : ObjString ) {
+        // Value method = peek(0);
+        //   ObjClass* klass = AS_CLASS(peek(1));
+        //   tableSet(&klass->methods, name, method);
+        //   pop();
+
+
+        let method = self.peek(0).clone();
+        let klass = self.peek(1).clone().as_class();
+
+        &mut self.methodTables[klass.getMethodTableIndex()].set(methodName, method);
+        self.pop_stack();
+
     }
 
 
@@ -531,7 +695,19 @@ impl VM {
     }
 
     fn callValue(&mut self, callee: Value, argCount: u8) -> bool {
+       // println!("calling {:?}",&callee);
         match callee {
+            Value::OBJ(Obj::BOUND_METHOD( mut method @ ObjBoundMethod{..})) => {
+                // ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
+                //         return call(bound->method, argCount);
+
+                // vm.stackTop[-argCount - 1] = bound->receiver;
+                let receiverIndex = self.stack.len() - 1 - (argCount as usize);
+                let mut receiver = self.getAt(receiverIndex).clone();
+
+                method.setReceiver(&mut receiver as *mut Value);
+                self.call(method.getClosure(), argCount)
+            }
             Value::OBJ(Obj::CLOSURE(closure @ObjClosure{ .. })) => {
                 self.call(closure, argCount)
             }
@@ -546,6 +722,26 @@ impl VM {
                 let instance = Value::make_instance(ObjInstance::new(class, taleIndex));
                 let instanceIndex = self.stack.len() - 1  - argCount as usize;
                 self.stack[instanceIndex] = instance;
+
+                // After the runtime allocates the new instance,
+                // we look for an init() method on the class. If we find one, we initiate a call to it.
+
+                // call init if exists on instance
+
+                let initString = &self.initString;
+                match self.methodTables[class.getMethodTableIndex()].get(initString) {
+                    None => {
+                        // if there is no init() method,
+                        // then it doesn’t make any sense to pass arguments to the class when creating the instance
+                        if(argCount != 0) {
+                            self.runtime_error(&format!("Expected 0 arguments but got {}.", argCount));
+                        }
+                    }
+                    Some(initializer) => {
+                        let closure = initializer.clone().as_closure();
+                        self.call(closure,argCount);
+                    }
+                }
 
                 return true
 
@@ -726,6 +922,20 @@ impl VM {
             }
             _ => {
                 self.runtime_error("Operands must be two numbers or two strings");
+            }
+        }
+    }
+    pub fn getInternedString(&mut self, string : ObjString) -> ObjString {
+        match self.strings.get_key(&string) {
+            None => {
+                let cloned_string = string.clone();
+                self.strings.set(string, Value::nil_value());
+                cloned_string
+            }
+            Some(internedString) => {
+                // free allocated string, return clone instead
+                string.free();
+                internedString.clone()
             }
         }
     }

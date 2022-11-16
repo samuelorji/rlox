@@ -97,6 +97,10 @@ impl Debug for Value {
                     Obj::INSTANCE(instance @ ObjInstance{ .. }) => {
                         f.write_str(&format!("{:?}", instance))
                     }
+                    Obj::BOUND_METHOD(boundMethod @ ObjBoundMethod { .. }) => {
+                        f.write_str(boundMethod.getMethodName())
+                    }
+
                 }
             }
 
@@ -191,6 +195,15 @@ impl Value {
         }
     }
 
+    pub fn asBoundMethod(self) -> ObjBoundMethod {
+        match self {
+            Value::OBJ(Obj::BOUND_METHOD(method @ ObjBoundMethod{ ..})) => {
+                method
+            }
+            x => panic!("{:?} is not a bound method",x)
+        }
+    }
+
     pub fn is_instance(&self) -> bool {
         match self {
             Value::OBJ(Obj::INSTANCE(ObjInstance{ ..})) => {
@@ -220,9 +233,11 @@ impl Value {
         }
     }
 
-    pub fn make_class(className : ObjString) -> Value {
-        Value::OBJ(Obj::CLASS(ObjClass { name : className}))
-
+    pub fn make_class(className : ObjString, methodTableIndex : usize) -> Value {
+        Value::OBJ(Obj::CLASS(ObjClass::new(className, methodTableIndex)))
+    }
+    pub fn makeBoundMethod(boundMethod : ObjBoundMethod) -> Value {
+        Value::OBJ(Obj::BOUND_METHOD(boundMethod))
     }
 
     pub fn make_closure(closure : ObjClosure) -> Value {
