@@ -16,6 +16,7 @@ use std::borrow::Cow;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::mem::size_of;
 use std::path::Path;
 use std::str::Split;
 use compiler::*;
@@ -62,6 +63,7 @@ fn main() {
     // println!("size of obj string {:?}",std::mem::size_of::<u32>());
     // println!("size of obj string {:?}",std::mem::size_of::<usize>());
     // println!("size of obj string {:?}",std::mem::size_of::<bool>());
+
 
     let mut vm = VM::new();
 

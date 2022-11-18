@@ -221,7 +221,9 @@ impl Table {
         }
          */
 
-        let mut index = (key.hash() as usize % capacity) as usize;
+        //optimization, same as %
+        // let mut index = (key.hash() as usize % capacity) as usize;
+        let mut index = (key.hash() as usize & (capacity- 1) ) as usize;
         // let mut tombstone : &mut Entry = &mut Entry::empty();
         let mut tombstone_found = false;
         let mut tomb_stone_index: Option<usize> = None;
@@ -254,41 +256,9 @@ impl Table {
                     }
                 }
             }
-            index = (index + 1) % capacity;
+            index = (index + 1) & (capacity - 1);
         }
     }
-    // pub fn find_entry<'a>(entries : &'a mut Vec<Entry>, capacity : usize ,key : &ObjString) -> &'a Entry {
-    //
-    //     /**
-    //      static Entry* findEntry(Entry* entries, int capacity,
-    //                     ObjString* key) {
-    //       uint32_t index = key->hash % capacity;
-    //       for (;;) {
-    //         Entry* entry = &entries[index];
-    //         if (entry->key == key || entry->key == NULL) {
-    //           return entry;
-    //         }
-    //
-    //         index = (index + 1) % capacity;
-    //       }
-    //     }
-    //      */
-    //
-    //     let mut index = (key.hash as usize % capacity) as usize;
-    //     unsafe {
-    //         loop {
-    //             let mut entry  = (entries.get(index).expect("index out of bounds"));
-    //             match (*entry).key {
-    //                 p @ObjString { .. } =>  {
-    //                     if(p == *key || (*entry).key.is_empty()) {
-    //                         return entry;
-    //                     }
-    //                 }
-    //             }
-    //             index = (index + 1) % capacity;
-    //         }
-    //     }
-    // }
 
     pub fn get(&mut self, object : &ObjString) -> Option<&Value> {
         if(self.count == 0) {
