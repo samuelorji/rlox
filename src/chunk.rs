@@ -38,7 +38,10 @@ pub enum OpCode {
     OP_SET_PROPERTY,
     OP_GET_PROPERTY,
     OP_METHOD,
-    OP_INVOKE
+    OP_INVOKE,
+    OP_INHERIT,
+    OP_GET_SUPER,
+    OP_SUPER_INVOKE
 
 
 }
@@ -82,44 +85,15 @@ impl From<u8> for OpCode{
             31 => OpCode::OP_GET_PROPERTY,
             32 => OpCode::OP_METHOD,
             33 => OpCode::OP_INVOKE,
+            34 => OpCode::OP_INHERIT,
+            35 => OpCode::OP_GET_SUPER,
+            36 => OpCode::OP_SUPER_INVOKE,
             _ => panic!( "unknown opcode {}", x)
         }
 
     }
 }
 
-// impl TryFrom<&u8> for OpCode {
-//     type Error = u8;
-//
-//     fn try_from(value: &u8) -> Result<Self, Self::Error> {
-//         match value {
-//             0 => Ok(OpCode::OP_RETURN),
-//             1 => Ok(OpCode::OP_CONSTANT),
-//             2 => Ok(OpCode::OP_NEGATE),
-//             3 => Ok(OpCode::OP_ADD),
-//             4 => Ok(OpCode::OP_SUBTRACT),
-//             5 => Ok(OpCode::OP_DIVIDE),
-//             6 => Ok(OpCode::OP_MULTIPLY),
-//             7 => Ok(OpCode::OP_NIL),
-//             8 => Ok(OpCode::OP_TRUE),
-//             9 => Ok(OpCode::OP_FALSE),
-//             10 => Ok(OpCode::OP_NOT),
-//             11 => Ok(OpCode::OP_EQUAL),
-//             12 => Ok(OpCode::OP_GREATER),
-//             13 => Ok(OpCode::OP_LESS),
-//             14 => Ok(OpCode::OP_PRINT),
-//             15 => Ok(OpCode::OP_POP),
-//             16 => Ok(OpCode::OP_DEFINE_GLOBAL),
-//             17 => Ok(OpCode::OP_GET_GLOBAL),
-//             18 => Ok(OpCode::OP_SET_GLOBAL),
-//             19 => Ok(OpCode::OP_GET_LOCAL),
-//             20 => Ok(OpCode::OP_SET_LOCAL),
-//             21 => Ok(OpCode::OP_JUMP_IF_FALSE),
-//             22 => Ok(OpCode::OP_JUMP),
-//             x => Err(*x)
-//         }
-//     }
-// }
 impl From<OpCode> for u8 {
     fn from(opcode: OpCode) -> Self {
        opcode as u8
@@ -277,7 +251,13 @@ impl Chunk {
 
             OpCode::OP_METHOD => self.constantInstruction("OP_METHOD", offset),
 
-            OpCode::OP_INVOKE => self.invokeInstruction("OP_INVOKE", offset)
+            OpCode::OP_INVOKE => self.invokeInstruction("OP_INVOKE", offset),
+
+            OpCode::OP_INHERIT => self.simpleInstruction("OP_INHERIT", offset),
+
+            OpCode::OP_GET_SUPER => self.constantInstruction("OP_GET_SUPER", offset),
+
+            OpCode::OP_SUPER_INVOKE => self.invokeInstruction("OP_SUOER_INVOKE", offset),
         }
 
     }

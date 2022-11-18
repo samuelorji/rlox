@@ -316,7 +316,7 @@ impl Table {
         }
     }
 
-    fn add_all(from : &mut Table, to : &mut Table) {
+    pub fn add_all(from : &mut Table, to : &mut Table) {
         /**
         void tableAddAll(Table* from, Table* to) {
           for (int i = 0; i < from->capacity; i++) {

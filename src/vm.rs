@@ -504,6 +504,78 @@ impl VM {
 
                     }
                 }
+
+                OpCode::OP_INHERIT => {
+                    // Value superclass = peek(1);
+                    //         ObjClass* subclass = AS_CLASS(peek(0));
+                    //         tableAddAll(&AS_CLASS(superclass)->methods,
+                    //                     &subclass->methods);
+                    //         pop(); // Subclass.
+                    //         break;
+
+                    let superClass = self.peek(1).clone();
+                    let subClass = self.peek(0).clone().as_class();
+
+                    // if (!IS_CLASS(superclass)) {
+                    //           runtimeError("Superclass must be a class.");
+                    //           return INTERPRET_RUNTIME_ERROR;
+                    //         }
+                    if(!superClass.isClass()) {
+                        self.runtime_error("Superclass must be a class.");
+                        return InterpretResult::INTERPRET_RUNTIME_ERROR
+                    }
+
+                    let superClass = superClass.as_class();
+                    // having to use a pointer cos you can't mutably borrow twice
+                    let mut superClassMethods = &mut self.methodTables[superClass.getMethodTableIndex()] as *mut Table;
+                    let mut subClassMethods = &mut self.methodTables[subClass.getMethodTableIndex()];
+
+                    unsafe {
+                        Table::add_all(&mut (*superClassMethods), subClassMethods);
+                    }
+                    self.pop_stack();
+                }
+
+                OpCode::OP_GET_SUPER => {
+                    // ObjString* name = READ_STRING();
+                    //         ObjClass* superclass = AS_CLASS(pop());
+                    //
+                    //         if (!bindMethod(superclass, name)) {
+                    //           return INTERPRET_RUNTIME_ERROR;
+                    //         }
+                    //         break;
+
+                    let name = self.readConstant().as_obj_string();
+                    let superClass= self.pop_stack().as_class();
+
+                    if(!self.bindMethod(superClass, name)){
+                        return InterpretResult::INTERPRET_RUNTIME_ERROR
+                    }
+                }
+
+                OpCode::OP_SUPER_INVOKE => {
+                    // ObjString* method = READ_STRING();
+                    //         int argCount = READ_BYTE();
+                    //         ObjClass* superclass = AS_CLASS(pop());
+                    //         if (!invokeFromClass(superclass, method, argCount)) {
+                    //           return INTERPRET_RUNTIME_ERROR;
+                    //         }
+                    //         frame = &vm.frames[vm.frameCount - 1];
+                    //         break;
+                    //       }
+
+                    let method = self.readConstant().as_obj_string();
+                    let argCount = self.readByte();
+
+                    let superClass = self.pop_stack().as_class();
+                    if(!self.invokeFromClass(superClass,method, argCount)){
+                        return InterpretResult::INTERPRET_RUNTIME_ERROR
+                    }
+                    unsafe {
+                        let currentFrameIndex = self.frameCount - 1;
+                        self.currentFrame = &mut self.frames[currentFrameIndex] as *mut CallFrame;
+                    }
+                }
             }
         }
     }

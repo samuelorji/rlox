@@ -211,7 +211,15 @@ impl Value {
             }
             x => false
         }
+    }
 
+    pub fn isClass(&self) -> bool {
+        match self {
+            Value::OBJ(Obj::CLASS(ObjClass{ ..})) => {
+                true
+            }
+            x => false
+        }
     }
 
 

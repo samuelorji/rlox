@@ -112,8 +112,8 @@ impl ParseRule {
         rules[TokenType::OR.as_usize()] =  createParseRule( None,Some(or),Precedence::NONE);
         rules[TokenType::AND.as_usize()] =  createParseRule( None,Some(and),Precedence::NONE);
         rules[TokenType::DOT.as_usize()] =  createParseRule( None,Some(dot),Precedence::CALL);
-        // [TOKEN_THIS]          = {this_,    NULL,   PREC_NONE},
         rules[TokenType::THIS.as_usize()] =  createParseRule( Some(this),None,Precedence::NONE);
+        rules[TokenType::SUPER.as_usize()] =  createParseRule( Some(_super),None,Precedence::NONE);
 
 
         rules
@@ -192,13 +192,14 @@ pub struct Compiler<'a> {
 
 #[derive(Copy, Clone)]
 pub struct ClassCompiler {
+    hasSuperClass: bool
 
 }
 
 impl ClassCompiler {
     pub fn empty() -> Self {
         Self {
-
+            hasSuperClass: false
         }
     }
 }
@@ -305,6 +306,32 @@ impl<'a> Compiler<'a> {
 
        // self.nestedClasses =
         self.nestedClassIndex +=1;
+        if(self.match_type(LESS)){
+            // inheritance casw
+            // if (match(TOKEN_LESS)) {
+            //     consume(TOKEN_IDENTIFIER, "Expect superclass name.");
+            //     variable(false);
+            //     namedVariable(className, false);
+            //     emitByte(OP_INHERIT);
+            //   }
+
+            self.consume(IDENTIFIER, "Expect superclass name.");
+            variable(self, false);
+            if(className == self.parser.previous) {
+                self.error("A class can't inherit from itself.");
+            }
+            // beginScope();
+            //     addLocal(syntheticToken("super"));
+            //     defineVariable(0);
+
+            self.beginScope();
+            self.addLocal(Token::fromStr("super"));
+            self.define_variable(0);
+            self.named_variable(false, Some(className));
+            self.emitByte(OP_INHERIT.to_u8());
+            self.nestedClasses[self.nestedClassIndex as usize].hasSuperClass = true;
+
+        }
         self.named_variable(false, Some(className));
         self.consume(LEFT_BRACE, "Expect '{' before class body.");
         while (!self.check_current_type(RIGHT_BRACE) && !self.check_current_type(EOF)) {
@@ -312,6 +339,9 @@ impl<'a> Compiler<'a> {
         }
         self.consume(RIGHT_BRACE,"Expect '}' after class body." );
         self.emitOpcode(OP_POP);
+        if(self.nestedClasses[self.nestedClassIndex as usize].hasSuperClass){
+            self.endScope()
+        }
         self.nestedClassIndex -=1;
     }
     fn method(&mut self) {
@@ -1330,6 +1360,57 @@ fn this<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
         return;
     }
     variable(compiler, false)
+}
+
+fn _super<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
+
+     // if (currentClass == NULL) {
+    //     error("Can't use 'super' outside of a class.");
+    //   } else if (!currentClass->hasSuperclass) {
+    //     error("Can't use 'super' in a class with no superclass.");
+    //   }
+
+    // self.nestedClasses[self.nestedClassIndex as usize].hasSuperClass = true;
+
+    if(compiler.nestedClassIndex < 1) {
+        compiler.error("Can't use 'super' outside of a class.");
+
+    } else if (!compiler.nestedClasses[compiler.nestedClassIndex as usize].hasSuperClass){
+        compiler.error("Can't use 'super' in a class with no superclass.");
+    }
+    // consume(TOKEN_DOT, "Expect '.' after 'super'.");
+    //   consume(TOKEN_IDENTIFIER, "Expect superclass method name.");
+    //   uint8_t name = identifierConstant(&parser.previous);
+    compiler.consume(DOT,"Expect '.' after 'super'." );
+    compiler.consume(IDENTIFIER,"Expect superclass method name." );
+    let name = compiler.identifierConstant(false).0;
+
+    // namedVariable(syntheticToken("this"), false);
+    //   namedVariable(syntheticToken("super"), false);
+    //   emitBytes(OP_GET_SUPER, name);
+
+    compiler.named_variable(false, Some(Token::fromStr("this")));
+
+    //if (match(TOKEN_LEFT_PAREN)) {
+    //     uint8_t argCount = argumentList();
+    //     namedVariable(syntheticToken("super"), false);
+    //     emitBytes(OP_SUPER_INVOKE, name);
+    //     emitByte(argCount);
+    //   } else {
+    //     namedVariable(syntheticToken("super"), false);
+    //     emitBytes(OP_GET_SUPER, name);
+    //   }
+    if(compiler.match_type(LEFT_PAREN)) {
+        let argCount = compiler.argumentList();
+        compiler.named_variable(false, Some(Token::fromStr("super")));
+        compiler.emitBytes(OP_SUPER_INVOKE.to_u8(), name);
+        compiler.emitByte(argCount)
+    } else {
+        compiler.named_variable(false, Some(Token::fromStr("super")));
+        compiler.emitBytes(OP_GET_SUPER.to_u8(), name);
+    }
+
+
 }
 
 fn call<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
