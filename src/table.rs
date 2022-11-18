@@ -8,7 +8,7 @@ const TABLE_MAX_LOAD: f32 = 0.75;
 pub struct Table {
     count : usize,
     capacity : usize,
-    entries : Vec<Entry>
+    pub entries : Vec<Entry>
 }
 
 #[derive(Debug,Clone)]

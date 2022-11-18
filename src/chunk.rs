@@ -257,7 +257,7 @@ impl Chunk {
 
             OpCode::OP_GET_SUPER => self.constantInstruction("OP_GET_SUPER", offset),
 
-            OpCode::OP_SUPER_INVOKE => self.invokeInstruction("OP_SUOER_INVOKE", offset),
+            OpCode::OP_SUPER_INVOKE => self.invokeInstruction("OP_SUPER_INVOKE", offset),
         }
 
     }

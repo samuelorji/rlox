@@ -645,8 +645,18 @@ impl VM {
         //   return call(AS_CLOSURE(method), argCount);
         // }
 
+
+        // {
+        //     let mut table = &mut self.methodTables[klass.getMethodTableIndex()];
+        //     ///println!("length {}", table.entries.len());
+        //     for entry in table.entries.iter_mut() {
+        //         println!("{:?}", entry)
+        //     }
+        // }
+
         match self.methodTables[klass.getMethodTableIndex()].get(&name){
             None => {
+               // println!("invoke from class");
                 self.runtime_error(&format!("Undefined property '{}'.",name.as_str()));
                 return false
             }

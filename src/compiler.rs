@@ -298,7 +298,7 @@ impl<'a> Compiler<'a> {
 
     fn class_declaration(&mut self) {
         self.consume(IDENTIFIER,  "Expect class name.");
-        let (constantIndex , className) = self.identifierConstant(true);
+        let (constantIndex , className) = self.identifierConstant(true,None);
         let className = self.parser.previous;
         self.declareVariable();
         self.emitBytes(OP_CLASS.to_u8(),constantIndex);
@@ -325,8 +325,9 @@ impl<'a> Compiler<'a> {
             //     defineVariable(0);
 
             self.beginScope();
-            self.addLocal(Token::fromStr("super"));
+            self.addLocal(Token::_super());
             self.define_variable(0);
+            //println!("class name is {:?}, previous is {:?}", className.lexeme(),self.parser.previous.lexeme());
             self.named_variable(false, Some(className));
             self.emitByte(OP_INHERIT.to_u8());
             self.nestedClasses[self.nestedClassIndex as usize].hasSuperClass = true;
@@ -351,7 +352,7 @@ impl<'a> Compiler<'a> {
 
         self.consume(IDENTIFIER, "Expect method name.");
 
-        let (constantIndex, functionName) = self.identifierConstant(true);
+        let (constantIndex, functionName) = self.identifierConstant(true,None);
         let functionName = functionName.expect("expect function name");
         let functionType = if (functionName.equalsStr("init")) {
             FunctionType::INITIALIZER
@@ -520,7 +521,7 @@ impl<'a> Compiler<'a> {
             // so if the declaration is inside a local scope, we return a dummy table index instead.
             return (0,Some(self.parse_identifier()));
         }
-        self.identifierConstant(returnVariableName)
+        self.identifierConstant(returnVariableName,None)
 
     }
 
@@ -595,8 +596,8 @@ impl<'a> Compiler<'a> {
     }
 
     // makes an indentifier constant, using parser.previous.lexeme as the string
-    fn identifierConstant(&mut self, returnIdentifier: bool) -> (u8,Option<ObjString>) {
-        let identifier = ObjString::from_str(self.parser.previous.lexeme());
+    fn identifierConstant(&mut self, returnIdentifier: bool, identifier : Option<Token<'a>>) -> (u8,Option<ObjString>) {
+        let identifier = ObjString::from_str(identifier.unwrap_or_else(|| {self.parser.previous} ).lexeme());
         let interned_string = self.get_interned_string(identifier);
         let constantIndex = self.makeConstant(Value::obj_value( Obj::STRING(interned_string)));
 
@@ -887,7 +888,6 @@ impl<'a> Compiler<'a> {
     }
 
     fn beginScope(&mut self){
-        let currentFunction = &self.state[self.stateIndex as usize].function;
         self.state[self.stateIndex as usize].scopeDepth+=1
     }
     fn endScope(&mut self){
@@ -946,10 +946,10 @@ impl<'a> Compiler<'a> {
             // walk backwards from the local stack and if any local matches the token we're looking for
             // we return the index
             let local = &self.state[stateIndex].locals[i as usize];
-           // println!("local name is {} and token is {}",&local.name.lexeme(), &token.lexeme());
+            //println!("local name is {} and token is {}",&local.name.lexeme(), &token.lexeme());
 
             if (local.name == token){
-              //  println!("same::::: local name is {} and token is {}",&local.name.lexeme(), &token.lexeme());
+                //println!("same::::: local name is {} and token is {}",&local.name.lexeme(), &token.lexeme());
                 if (local.depth == -1) {
                     self.error("Can't read local variable in its own initializer.");
                 }
@@ -971,7 +971,7 @@ impl<'a> Compiler<'a> {
 
 
         let mut arg = self.resolveLocal(toResolve,self.stateIndex as usize);
-      //  println!("arg is {arg}");
+        //println!("arg is {arg} for token {:?}",toResolve.lexeme());
 
         if(arg != -1){
             getOp = OpCode::OP_GET_LOCAL;
@@ -986,7 +986,7 @@ impl<'a> Compiler<'a> {
         }else {
             // this wil take the consumed identifier, stash it in the constant table and return the index
             // where this was saved
-            arg = (self.identifierConstant(false)).0 as i32;
+            arg = (self.identifierConstant(false,token)).0 as i32;
             getOp = OpCode::OP_GET_GLOBAL;
             setOp= OpCode::OP_SET_GLOBAL;
         }
@@ -1383,13 +1383,13 @@ fn _super<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
     //   uint8_t name = identifierConstant(&parser.previous);
     compiler.consume(DOT,"Expect '.' after 'super'." );
     compiler.consume(IDENTIFIER,"Expect superclass method name." );
-    let name = compiler.identifierConstant(false).0;
+    let name = compiler.identifierConstant(false,None).0;
 
     // namedVariable(syntheticToken("this"), false);
     //   namedVariable(syntheticToken("super"), false);
     //   emitBytes(OP_GET_SUPER, name);
 
-    compiler.named_variable(false, Some(Token::fromStr("this")));
+    compiler.named_variable(false, Some(Token::this()));
 
     //if (match(TOKEN_LEFT_PAREN)) {
     //     uint8_t argCount = argumentList();
@@ -1402,11 +1402,11 @@ fn _super<'a>(compiler: &mut Compiler<'a>,canAssign : bool) {
     //   }
     if(compiler.match_type(LEFT_PAREN)) {
         let argCount = compiler.argumentList();
-        compiler.named_variable(false, Some(Token::fromStr("super")));
+        compiler.named_variable(false, Some(Token::_super()));
         compiler.emitBytes(OP_SUPER_INVOKE.to_u8(), name);
         compiler.emitByte(argCount)
     } else {
-        compiler.named_variable(false, Some(Token::fromStr("super")));
+        compiler.named_variable(false, Some(Token::_super()));
         compiler.emitBytes(OP_GET_SUPER.to_u8(), name);
     }
 
@@ -1466,7 +1466,7 @@ fn dot<'a>(compiler: &mut Compiler<'a>,canAssign : bool){
     //   }
 
     compiler.consume(IDENTIFIER,"Expect property name after '.'." );
-    let propertyIndex = compiler.identifierConstant(false).0;
+    let propertyIndex = compiler.identifierConstant(false,None).0;
 
     if(canAssign && compiler.match_type(EQUAL)) {
         // Assignment operation

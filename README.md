@@ -149,4 +149,53 @@ print pair.first + pair.second;
 ```bash
 3
 ```
+
+### Classes with Methods
+```python
+class Foo {
+  methodOnFoo() { print "foo"; }
+  override() { print "foo"; }
+}
+
+class Bar < Foo {
+  methodOnBar() { print "bar"; }
+  override() { print "bar"; }
+}
+var bar = Bar();
+bar.methodOnFoo(); // expect: foo
+bar.methodOnBar(); // expect: bar
+bar.override(); // expect: bar
+```
+result:
+```bash
+foo
+bar
+bar
+```
+
+### Super Classes
+```python
+class Base {
+  init(a) {
+    this.a = a;
+  }
+}
+
+class Derived < Base {
+  init(a, b) {
+    super.init(a);
+    this.b = b;
+  }
+}
+
+var derived = Derived("a", "b");
+print derived.a; // expect: a
+print derived.b; // expect: b
+```
+result
+
+```bash
+a
+b
+````
 ## Compiler Internals

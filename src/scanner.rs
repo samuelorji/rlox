@@ -331,18 +331,18 @@ impl<'a> Token<'a> {
         self.start.len()
     }
 
-    pub fn fromStr(tokenStr : &'a str) -> Self {
-        Self {
-            tokenType: TokenType::IDENTIFIER,
-            start: tokenStr.as_bytes(),
-            line: 0
-        }
-    }
-
     pub fn this() -> Self {
         Self {
             tokenType: TokenType::THIS,
             start: "this".as_bytes(),
+            line: 0
+        }
+    }
+
+    pub fn _super() -> Self {
+        Self {
+            tokenType: TokenType::SUPER,
+            start: "super".as_bytes(),
             line: 0
         }
     }
