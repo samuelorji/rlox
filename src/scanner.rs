@@ -22,7 +22,7 @@ impl<'a> Scanner<'a> {
 
     pub fn empty() -> Scanner<'a> {
         Scanner {
-            source : &[],
+            source: &[],
             start: 0,
             current: 0,
             line: 0,
@@ -101,10 +101,15 @@ impl<'a> Scanner<'a> {
         self.advance();
         self.makeToken(TokenType::STRING)
     }
-    fn tryToMatch(&mut self, expected: char, onMatch: TokenType, onNoMatch: TokenType) -> TokenType {
+    fn tryToMatch(
+        &mut self,
+        expected: char,
+        onMatch: TokenType,
+        onNoMatch: TokenType,
+    ) -> TokenType {
         match self.matchChar(expected) {
             true => onMatch,
-            false => onNoMatch
+            false => onNoMatch,
         }
     }
 
@@ -126,7 +131,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> &'a u8 {
-       // self.start+=1;
+        // self.start+=1;
         self.current += 1;
         &self.source[self.current - 1]
     }
@@ -180,14 +185,15 @@ impl<'a> Scanner<'a> {
     }
 
     fn isAlpha(&self, character: char) -> bool {
-        (character >= 'a' && character <= 'z') ||
-            (character >= 'A' && character <= 'Z') || character == '_'
+        (character >= 'a' && character <= 'z')
+            || (character >= 'A' && character <= 'Z')
+            || character == '_'
     }
 
     fn identifier(&mut self) -> Token<'a> {
         while (self.isAlpha(*self.peek() as char) || self.isDigit(*self.peek())) {
             self.advance();
-        };
+        }
         self.makeToken(self.identifierType())
     }
 
@@ -211,7 +217,7 @@ impl<'a> Scanner<'a> {
                         'o' => return self.checkKeyword(2, 1, b"r", FOR),
                         'a' => return self.checkKeyword(2, 3, b"lse", FALSE),
                         'u' => return self.checkKeyword(2, 1, b"n", FUN),
-                        _ => ()
+                        _ => (),
                     };
                 };
             }
@@ -221,19 +227,27 @@ impl<'a> Scanner<'a> {
                     match self.source[self.start + 1] as char {
                         'h' => return self.checkKeyword(2, 2, b"is", THIS),
                         'r' => return self.checkKeyword(2, 2, b"ue", TRUE),
-                        _ => ()
+                        _ => (),
                     }
                 }
             }
-            _ => ()
+            _ => (),
         };
         IDENTIFIER
     }
 
-    fn checkKeyword(&self, start: usize, length: usize, rest: &[u8], tokenType: TokenType) -> TokenType {
+    fn checkKeyword(
+        &self,
+        start: usize,
+        length: usize,
+        rest: &[u8],
+        tokenType: TokenType,
+    ) -> TokenType {
         // check if self.source[self.start + start - start] == rest ,
         // e.g for else case, check if lse == lse
-        if (self.current - self.start == start + length && &self.source[self.start + start..self.current] == rest) {
+        if (self.current - self.start == start + length
+            && &self.source[self.start + start..self.current] == rest)
+        {
             return tokenType;
         }
         IDENTIFIER
@@ -246,7 +260,6 @@ impl<'a> Scanner<'a> {
             a == b
         }
     }
-
 
     fn skip(&mut self) {}
 
@@ -290,7 +303,7 @@ impl<'a> Scanner<'a> {
     }
 }
 
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 pub struct Token<'a> {
     pub tokenType: TokenType,
     pub start: &'a [u8],
@@ -299,8 +312,8 @@ pub struct Token<'a> {
 
 impl<'a> PartialEq for Token<'a> {
     fn eq(&self, other: &Self) -> bool {
-        if(self.tokenType != other.tokenType) {
-            return false
+        if (self.tokenType != other.tokenType) {
+            return false;
         } else {
             self.start == other.start
         }
@@ -311,17 +324,13 @@ impl<'a> PartialEq for Token<'a> {
     }
 }
 
-
-// impl Display for Token {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         let tokenString = format!("Token {{ tokenType: {}, lexeme : {}, line : {}",self.tokenType,self.start,self.line)
-//     }
-// }
-
 impl<'a> Debug for Token<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let lexeme = std::str::from_utf8(self.start).unwrap();
-        let tokenString = format!("Token {{ tokenType: {:?}, lexeme : \"{}\", line : {} : raw-bytes : {:?} }}", self.tokenType, lexeme, self.line,self.start);
+        let tokenString = format!(
+            "Token {{ tokenType: {:?}, lexeme : \"{}\", line : {} : raw-bytes : {:?} }}",
+            self.tokenType, lexeme, self.line, self.start
+        );
         f.write_str(&tokenString)
     }
 }
@@ -335,7 +344,7 @@ impl<'a> Token<'a> {
         Self {
             tokenType: TokenType::THIS,
             start: "this".as_bytes(),
-            line: 0
+            line: 0,
         }
     }
 
@@ -343,15 +352,15 @@ impl<'a> Token<'a> {
         Self {
             tokenType: TokenType::SUPER,
             start: "super".as_bytes(),
-            line: 0
+            line: 0,
         }
     }
-    
+
     pub fn empty() -> Self {
         Self {
             tokenType: TokenType::EMPTY,
             start: &[],
-            line: 0
+            line: 0,
         }
     }
 
@@ -359,17 +368,6 @@ impl<'a> Token<'a> {
         std::str::from_utf8(self.start).unwrap()
     }
 }
-
-//
-// impl PartialEq for TokenType {
-//     fn eq(&self, other: &Self) -> bool {
-//         self as &u8 == other as &u8
-//     }
-//
-//     fn ne(&self, other: &Self) -> bool {
-//         self as u8 != other as u8
-//     }
-// }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TokenType {
@@ -435,19 +433,19 @@ impl TokenType {
 
 pub fn initScanner(source: String) {}
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn testParseSourceWithComment() {
-
         // Explicit tokens used
-        let mut source = String::from(r#"
+        let mut source = String::from(
+            r#"
 !
 //hello
-="#);
+="#,
+        );
         source.push('\0'); // add null terminating byte
 
         let mut sourceCode = source.trim().as_bytes();
@@ -465,22 +463,20 @@ mod tests {
 
         scannedToken = scanner.scanTokens();
 
-        let equalsSign =
-            Token {
-                tokenType: TokenType::EQUAL,
-                start: &sourceCode[10..11],
-                line: 3,
-            };
+        let equalsSign = Token {
+            tokenType: TokenType::EQUAL,
+            start: &sourceCode[10..11],
+            line: 3,
+        };
         assert_eq!(equalsSign, scannedToken);
 
         // we use start as an empty slice because EOF doesn't capture the null byte
         // but returns an empty slice instead
-        let eofToken =
-            Token {
-                tokenType: TokenType::EOF,
-                start: &sourceCode[11..11], // could be anything to denote an empty slice 1..1, 2..2
-                line: 3,
-            };
+        let eofToken = Token {
+            tokenType: TokenType::EOF,
+            start: &sourceCode[11..11], // could be anything to denote an empty slice 1..1, 2..2
+            line: 3,
+        };
         scannedToken = scanner.scanTokens();
         assert_eq!(eofToken, scannedToken);
     }

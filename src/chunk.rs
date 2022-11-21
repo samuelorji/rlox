@@ -1,8 +1,7 @@
-
 use crate::value;
 use value::*;
 // each operation has a one-byte operation code e.g add, subtract e.t.c
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum OpCode {
     OP_RETURN,
@@ -41,14 +40,12 @@ pub enum OpCode {
     OP_INVOKE,
     OP_INHERIT,
     OP_GET_SUPER,
-    OP_SUPER_INVOKE
-
-
+    OP_SUPER_INVOKE,
 }
 
 // NB, this  must match the order above
 
-impl From<u8> for OpCode{
+impl From<u8> for OpCode {
     fn from(x: u8) -> Self {
         match x {
             0 => OpCode::OP_RETURN,
@@ -88,15 +85,14 @@ impl From<u8> for OpCode{
             34 => OpCode::OP_INHERIT,
             35 => OpCode::OP_GET_SUPER,
             36 => OpCode::OP_SUPER_INVOKE,
-            _ => panic!( "unknown opcode {}", x)
+            _ => panic!("unknown opcode {}", x),
         }
-
     }
 }
 
 impl From<OpCode> for u8 {
     fn from(opcode: OpCode) -> Self {
-       opcode as u8
+        opcode as u8
     }
 }
 
@@ -107,9 +103,9 @@ impl OpCode {
 }
 
 pub struct Chunk {
-     pub code:  Vec<u8>,
-     pub constants: ValueArray,
-     pub lines : Vec<usize>
+    pub code: Vec<u8>,
+    pub constants: ValueArray,
+    pub lines: Vec<usize>,
 }
 
 impl Clone for Chunk {
@@ -121,12 +117,12 @@ impl Clone for Chunk {
 impl Chunk {
     pub fn new() -> Self {
         Self {
-            code : vec![],
+            code: vec![],
             constants: ValueArray::new(),
-            lines : vec![]
+            lines: vec![],
         }
     }
-    pub fn write(&mut self, byte : u8, line : usize) -> () {
+    pub fn write(&mut self, byte: u8, line: usize) -> () {
         self.code.push(byte);
         self.lines.push(line)
     }
@@ -136,54 +132,48 @@ impl Chunk {
         self.lines = Vec::new();
     }
     // return the index where the constant was appended to
-    pub fn addConstant(&mut self, constant : Value) -> u32 {
+    pub fn addConstant(&mut self, constant: Value) -> u32 {
         self.constants.write(constant);
         self.constants.count() - 1
     }
 
-    pub fn readConstant(&self, index : usize) -> Value {
-        self.constants.read_value(index)
+    pub fn readConstant(&self, index: usize) -> Value {
+        self.constants.readValue(index)
     }
 
-    pub fn read(&self, index : usize) -> u8 {
+    pub fn read(&self, index: usize) -> u8 {
         self.code[index]
     }
 
-    pub fn disassemble(&self, chunkName : &str)  {
+    pub fn disassemble(&self, chunkName: &str) {
         print!("== {} ==\n", chunkName);
 
-        let mut offset  = 0;
+        let mut offset = 0;
         // offset here must end up being a valid opcode else it will panic
         // we want this, cos disassemble instruction must start at an opcode
-        while(offset < self.code.len()) {
+        while (offset < self.code.len()) {
             offset = self.disassembleInstruction(offset);
         }
         println!("=====    =====");
     }
 
     // returns next instruction index
-    pub fn disassembleInstruction(&self, offset : usize) -> usize {
-        print!("{:04} ",offset);
+    pub fn disassembleInstruction(&self, offset: usize) -> usize {
+        print!("{:04} ", offset);
 
-        if(offset >0 && self.lines[offset] == self.lines[offset -1]){
+        if (offset > 0 && self.lines[offset] == self.lines[offset - 1]) {
             // we're on the same line in the source code
             print!("   | ")
         } else {
-            print!("{:4} ",self.lines[offset])
+            print!("{:4} ", self.lines[offset])
         }
 
         let instruction: OpCode = self.code[offset].into();
         // all things being equal, instruction should be an opcode
         match instruction {
-            OpCode::OP_CONSTANT => {
-                self.constantInstruction("OP_CONSTANT",offset)
-            }
-            OpCode::OP_RETURN => {
-                self.simpleInstruction("OP_RETURN",offset)
-            }
-            OpCode::OP_NEGATE => {
-                self.simpleInstruction("OP_NEGATE", offset)
-            }
+            OpCode::OP_CONSTANT => self.constantInstruction("OP_CONSTANT", offset),
+            OpCode::OP_RETURN => self.simpleInstruction("OP_RETURN", offset),
+            OpCode::OP_NEGATE => self.simpleInstruction("OP_NEGATE", offset),
 
             OpCode::OP_ADD => self.simpleInstruction("OP_ADD", offset),
             OpCode::OP_SUBTRACT => self.simpleInstruction("OP_SUBTRACT", offset),
@@ -208,40 +198,41 @@ impl Chunk {
 
             OpCode::OP_GET_LOCAL => self.byteInstruction("OP_GET_LOCAL", offset),
             OpCode::OP_SET_LOCAL => self.byteInstruction("OP_SET_LOCAL", offset),
-            OpCode::OP_JUMP_IF_FALSE =>  self.jumpInstruction("OP_JUMP_IF_FALSE", 1,offset),
-            OpCode::OP_JUMP => self.jumpInstruction("OP_JUMP", 1,offset),
+            OpCode::OP_JUMP_IF_FALSE => self.jumpInstruction("OP_JUMP_IF_FALSE", 1, offset),
+            OpCode::OP_JUMP => self.jumpInstruction("OP_JUMP", 1, offset),
 
             OpCode::OP_LOOP => self.jumpInstruction("OP_LOOP", -1, offset),
 
             OpCode::OP_CALL => self.byteInstruction("OP_CALL", offset),
 
             OpCode::OP_CLOSURE => {
-                let mut offset = offset+1;
+                let mut offset = offset + 1;
                 let constant = self.code[offset];
-                offset+=1;
+                offset += 1;
                 print!("{:-16} {:-4} ", "OP_CLOSURE", constant);
                 printValue(&self.constants.values[constant as usize]);
                 print!("\n");
-                let function  =  self.constants.values[constant as usize].as_function();
+                let function = self.constants.values[constant as usize].asFunction();
 
                 for _ in 0..function.upValueCount as usize {
                     let isLocal = self.code[offset];
-                    offset+=1;
+                    offset += 1;
                     let index = self.code[offset];
-                    offset+=1;
+                    offset += 1;
 
-                    let localType = if isLocal == 1 {"local"} else  {"upvalue"};
-                    print!("{:04}      |                     {} {}\n",offset -2,localType , index);
+                    let localType = if isLocal == 1 { "local" } else { "upvalue" };
+                    print!(
+                        "{:04}      |                     {} {}\n",
+                        offset - 2,
+                        localType,
+                        index
+                    );
                 }
                 return offset;
             }
 
-            OpCode::OP_GET_UPVALUE => {
-                self.byteInstruction("OP_GET_UP_VALUE", offset)
-            }
-            OpCode::OP_SET_UPVALUE => {
-                self.byteInstruction("OP_SET_UP_VALUE", offset)
-            }
+            OpCode::OP_GET_UPVALUE => self.byteInstruction("OP_GET_UP_VALUE", offset),
+            OpCode::OP_SET_UPVALUE => self.byteInstruction("OP_SET_UP_VALUE", offset),
 
             OpCode::OP_CLOSE_UPVALUE => self.simpleInstruction("OP_CLOSE_UPVALUE", offset),
             OpCode::OP_CLASS => self.constantInstruction("OP_CLASS", offset),
@@ -259,16 +250,14 @@ impl Chunk {
 
             OpCode::OP_SUPER_INVOKE => self.invokeInstruction("OP_SUPER_INVOKE", offset),
         }
-
     }
 
-    fn simpleInstruction(&self,instructionName : &str, offset : usize) -> usize {
+    fn simpleInstruction(&self, instructionName: &str, offset: usize) -> usize {
         print!("{}\n", instructionName);
         offset + 1
     }
 
-    fn constantInstruction(&self,name : &str, offset : usize) -> usize {
-
+    fn constantInstruction(&self, name: &str, offset: usize) -> usize {
         // constant index is the value which represents the index in the values array where the
         // constant for this opcode lives
         let constantIndex = self.code[offset + 1];
@@ -280,15 +269,7 @@ impl Chunk {
         offset + 2 // this should return the location of the next opcode
     }
 
-    fn invokeInstruction(&self,name : &str, offset : usize) -> usize {
-
-        // uint8_t constant = chunk->code[offset + 1];
-        //   uint8_t argCount = chunk->code[offset + 2];
-        //   printf("%-16s (%d args) %4d '", name, argCount, constant);
-        //   printValue(chunk->constants.values[constant]);
-        //   printf("'\n");
-        //   return offset + 3;
-
+    fn invokeInstruction(&self, name: &str, offset: usize) -> usize {
         let constantIndex = self.code[offset + 1];
         let argCount = self.code[offset + 2];
         print!("{name:-16} ({argCount} args){constantIndex:4} '");
@@ -299,32 +280,24 @@ impl Chunk {
         offset + 3 // this should return the location of the next opcode
     }
 
+    fn jumpInstruction(&self, name: &str, sign: isize, offset: usize) -> usize {
+        let mut jump: u16 = ((self.code[offset + 1]) as u16) << 8;
+        jump |= (self.code[offset + 2]) as u16;
 
-    // tatic int jumpInstruction(const char* name, int sign,
-    //                            Chunk* chunk, int offset) {
-    //   uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
-    //   jump |= chunk->code[offset + 2];
-    //   printf("%-16s %4d -> %d\n", name, offset,
-    //          offset + 3 + sign * jump);
-    //   return offset + 3;
-    // }
-
-    fn jumpInstruction(&self,name : &str, sign: isize,  offset : usize) -> usize {
-        let mut jump : u16 = ((self.code[offset + 1]) as u16 ) << 8 ;
-         jump |= (self.code[offset + 2]) as u16;
-
-        println!("{name:-16} {offset:-4} -> {}", ((offset + 3) as isize + (sign * jump as isize)) as usize);
+        println!(
+            "{name:-16} {offset:-4} -> {}",
+            ((offset + 3) as isize + (sign * jump as isize)) as usize
+        );
 
         offset + 3
     }
-    fn byteInstruction(&self,name : &str, offset : usize) -> usize {
-
+    fn byteInstruction(&self, name: &str, offset: usize) -> usize {
         let slot = self.code[offset + 1];
         println!("{:-16} {:-4}", name, slot);
         return offset + 2;
     }
 
-    fn printValue(value : Value) {
-        print!("{:?}",value)
+    fn printValue(value: Value) {
+        print!("{:?}", value)
     }
 }

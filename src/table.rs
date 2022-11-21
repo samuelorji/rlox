@@ -1,29 +1,28 @@
-use std::mem;
+use crate::object::ObjString;
+use crate::Value;
 use std::fmt::{Debug, Formatter};
 use std::iter::Empty;
-use crate::object::ObjString;
-use crate::{Value};
+use std::mem;
 
 const TABLE_MAX_LOAD: f32 = 0.75;
 pub struct Table {
-    count : usize,
-    capacity : usize,
-    pub entries : Vec<Entry>
+    count: usize,
+    capacity: usize,
+    pub entries: Vec<Entry>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Entry {
-    key : ObjString,
-    value: Value
+    key: ObjString,
+    value: Value,
 }
 
 impl Entry {
     fn empty() -> Self {
         Self {
             key: ObjString::empty(),
-            value: Value::empty()
+            value: Value::empty(),
         }
-
     }
 
     pub fn free(&mut self) {
@@ -32,18 +31,11 @@ impl Entry {
     }
 }
 
-// impl Drop for Entry {
-//     fn drop(&mut self) {
-//         self.key.free();
-//         self.value.free();
-//     }
-// }
-
 impl Debug for Table {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut string = String::new();
         for entry in &self.entries {
-            if(!entry.key.is_empty()) {
+            if (!entry.key.is_empty()) {
                 string.push_str(&format!("{:?}", entry));
                 string.push_str("\n");
             }
@@ -55,53 +47,51 @@ impl Debug for Table {
 impl Table {
     pub fn new() -> Self {
         Self {
-            count:0 ,
-            capacity:0,
-            entries: vec![]
+            count: 0,
+            capacity: 0,
+            entries: vec![],
         }
     }
 
     pub fn free(&mut self) {
         self.capacity = 0;
         self.count = 0;
-        for entry in self.entries.iter_mut(){
+        for entry in self.entries.iter_mut() {
             entry.free()
         }
         mem::replace(&mut self.entries, vec![]);
     }
 
-    pub fn set(&mut self, key : ObjString, value : Value) -> bool {
-
+    pub fn set(&mut self, key: ObjString, value: Value) -> bool {
         /**
-          if (table->count + 1 > table->capacity * TABLE_MAX_LOAD) {
-          int capacity = GROW_CAPACITY(table->capacity);
-          adjustCapacity(table, capacity);
-        }
-        */
+                  if (table->count + 1 > table->capacity * TABLE_MAX_LOAD) {
+                  int capacity = GROW_CAPACITY(table->capacity);
+                  adjustCapacity(table, capacity);
+                }
+                */
         /**
-           Entry* entry = findEntry(table->entries, table->capacity, key);
-        bool isNewKey = entry->key == NULL;
-        if (isNewKey) table->count++;
+                   Entry* entry = findEntry(table->entries, table->capacity, key);
+                bool isNewKey = entry->key == NULL;
+                if (isNewKey) table->count++;
 
-        entry->key = key;
-        entry->value = value;
-        return isNewKey;
-         */
-
+                entry->key = key;
+                entry->value = value;
+                return isNewKey;
+                 */
         if ((self.count + 1) as f32 > (self.capacity as f32) * TABLE_MAX_LOAD) {
             // we need to grow our array to
             let capacity = self.grow_capacity();
             // println!("before adjusting capacity : \n{:?}",&self);
             // println!("*********************************************************");
             self.adjust_capacity(capacity);
-           // println!("after adjusting capacity : \n{:?}",&self);
+            // println!("after adjusting capacity : \n{:?}",&self);
         }
 
-        let mut entry = Self::find_entry_mut(&mut self.entries ,self.capacity, &key);
+        let mut entry = Self::find_entry_mut(&mut self.entries, self.capacity, &key);
 
         let isNewKey = match (*entry).value {
             Value::Empty => true,
-            _ => false
+            _ => false,
         };
 
         if (isNewKey && entry.value.is_empty()) {
@@ -112,21 +102,21 @@ impl Table {
         (*entry).key = key;
         (*entry).value = value;
 
-
-
         isNewKey
-
-
     }
 
     fn grow_capacity(&self) -> usize {
-        let updated_capacity = if(self.capacity <8){ 8 } else {self.capacity * 2};
+        let updated_capacity = if (self.capacity < 8) {
+            8
+        } else {
+            self.capacity * 2
+        };
         // self.entries.resize_with(updated_capacity, || Entry::empty());
         // self.capacity = updated_capacity;
         updated_capacity
     }
 
-    fn adjust_capacity(&mut self,capacity : usize) {
+    fn adjust_capacity(&mut self, capacity: usize) {
         /**
          Entry* entries = ALLOCATE(Entry, capacity);
         for (int i = 0; i < capacity; i++) {
@@ -138,7 +128,6 @@ impl Table {
         table->capacity = capacity;
          */
 
-
         /**
          for (int i = 0; i < table->capacity; i++) {
           Entry* entry = &table->entries[i];
@@ -149,7 +138,6 @@ impl Table {
           dest->value = entry->value;
         }
          */
-
         // We want to move from a smaller to a bigger hash map
 
         // first we create the bigger hash map with empty values
@@ -171,59 +159,46 @@ impl Table {
 
         self.count = 0;
         for entry in &self.entries {
-           if(entry.key.is_empty()) {
-               // nothing to do
-               continue
-           } else {
-               // find the destination in the new/updated/bigger map and store the entry from the smaller map there instead
-               let destination = Self::find_entry_mut(&mut updated_entries,capacity,&entry.key);
-               destination.key = entry.key;
-               destination.value = entry.value;
-               self.count += 1
-
-           }
+            if (entry.key.is_empty()) {
+                // nothing to do
+                continue;
+            } else {
+                // find the destination in the new/updated/bigger map and store the entry from the smaller map there instead
+                let destination = Self::find_entry_mut(&mut updated_entries, capacity, &entry.key);
+                destination.key = entry.key;
+                destination.value = entry.value;
+                self.count += 1
+            }
         }
 
-        mem::replace(&mut self.entries, updated_entries );
+        mem::replace(&mut self.entries, updated_entries);
         self.capacity = capacity;
     }
 
-
-    pub fn remove(&mut self, key : &ObjString) -> bool {
-        if(self.count == 0) {
+    pub fn remove(&mut self, key: &ObjString) -> bool {
+        if (self.count == 0) {
             false
         } else {
-            let entry = Table::find_entry_mut(&mut self.entries,self.capacity, &key);
-            if(entry.key.is_empty()){
+            let entry = Table::find_entry_mut(&mut self.entries, self.capacity, &key);
+            if (entry.key.is_empty()) {
                 // this is an empty entry, not a corresponding key , no need to tombstone it
                 false
             } else {
                 entry.key = ObjString::empty();
-                entry.value = Value::nil_value();
+                entry.value = Value::nilValue();
                 true
             }
         }
     }
 
-    pub fn find_entry_mut<'a>(entries: &'a mut Vec<Entry>, capacity: usize, key: &ObjString) -> &'a mut Entry {
-        /**
-         static Entry* findEntry(Entry* entries, int capacity,
-                        ObjString* key) {
-          uint32_t index = key->hash % capacity;
-          for (;;) {
-            Entry* entry = &entries[index];
-            if (entry->key == key || entry->key == NULL) {
-              return entry;
-            }
-
-            index = (index + 1) % capacity;
-          }
-        }
-         */
-
+    pub fn find_entry_mut<'a>(
+        entries: &'a mut Vec<Entry>,
+        capacity: usize,
+        key: &ObjString,
+    ) -> &'a mut Entry {
         //optimization, same as %
         // let mut index = (key.hash() as usize % capacity) as usize;
-        let mut index = (key.hash() as usize & (capacity- 1) ) as usize;
+        let mut index = (key.hash() as usize & (capacity - 1)) as usize;
         // let mut tombstone : &mut Entry = &mut Entry::empty();
         let mut tombstone_found = false;
         let mut tomb_stone_index: Option<usize> = None;
@@ -231,7 +206,7 @@ impl Table {
             let mut entry = (entries.get(index).expect("index out of bounds"));
             match (*entry).key {
                 p @ ObjString { .. } => {
-                    if(p == *key ){
+                    if (p == *key) {
                         return entries.get_mut(index).expect("index out of bounds");
                     } else {
                         if p.is_empty() {
@@ -245,10 +220,12 @@ impl Table {
                                 } else {
                                     // if we have an empty entry, still haven't found the exact key and tombstone exists,
                                     // return/reuse the tombstone
-                                    return entries.get_mut(tomb_stone_index.unwrap()).expect("index out of bounds");
+                                    return entries
+                                        .get_mut(tomb_stone_index.unwrap())
+                                        .expect("index out of bounds");
                                 }
                                 //return entries.get_mut(index).expect("index out of bounds");
-                            } else if (entry.value.is_nil()){
+                            } else if (entry.value.isNil()) {
                                 // we found a tombstone, save the index
                                 tomb_stone_index = Some(index);
                             }
@@ -260,12 +237,12 @@ impl Table {
         }
     }
 
-    pub fn get(&mut self, object : &ObjString) -> Option<&Value> {
-        if(self.count == 0) {
+    pub fn get(&mut self, object: &ObjString) -> Option<&Value> {
+        if (self.count == 0) {
             None
-        }else {
-            let entry = Table::find_entry_mut(&mut self.entries,self.capacity,&object);
-            if(entry.key.is_empty()){
+        } else {
+            let entry = Table::find_entry_mut(&mut self.entries, self.capacity, &object);
+            if (entry.key.is_empty()) {
                 None
             } else {
                 Some(&entry.value)
@@ -273,12 +250,12 @@ impl Table {
         }
     }
 
-    pub fn get_key(&mut self, object : &ObjString) -> Option<&ObjString> {
-        if(self.count == 0) {
+    pub fn get_key(&mut self, object: &ObjString) -> Option<&ObjString> {
+        if (self.count == 0) {
             None
-        }else {
-            let entry = Table::find_entry_mut(&mut self.entries,self.capacity,&object);
-            if(entry.key.is_empty()){
+        } else {
+            let entry = Table::find_entry_mut(&mut self.entries, self.capacity, &object);
+            if (entry.key.is_empty()) {
                 None
             } else {
                 Some(&entry.key)
@@ -286,79 +263,73 @@ impl Table {
         }
     }
 
-    pub fn add_all(from : &mut Table, to : &mut Table) {
-        /**
-        void tableAddAll(Table* from, Table* to) {
-          for (int i = 0; i < from->capacity; i++) {
-            Entry* entry = &from->entries[i];
-            if (entry->key != NULL) {
-              tableSet(to, entry->key, entry->value);
-            }
-          }
-        }
-        */
-
+    pub fn add_all(from: &mut Table, to: &mut Table) {
         for from_entry in &from.entries {
-            if(!from_entry.key.is_empty()) {
+            if (!from_entry.key.is_empty()) {
                 to.set(from_entry.key, from_entry.value);
             }
         }
-
-
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::object::Obj;
     use super::*;
+    use crate::object::Obj;
     #[test]
-    fn test_table(){
-
+    fn test_table() {
         let mut map = Table::new();
-      //
-      //   // these two collide
-      //   map.set(ObjString::from_buffer("costarring".as_bytes()),Value::bool_value(true));
-      // //  map.set(ObjString::from_buffer("liquid".as_bytes()),Value::bool_value(true));
-      //
-      //   // these collide
-      //   map.set(ObjString::from_buffer("declinate".as_bytes()),Value::bool_value(true));
-      //   map.set(ObjString::from_buffer("macallums".as_bytes()),Value::bool_value(true));
-      //
-      //
-      //   let expected_value = Value::number_value(700f64);
-      //   let zinke = ObjString::from_buffer("zinke".as_bytes());
-      //   let zinke2 = zinke.clone();
-      //
-      //   println!("is equal : {}", {&zinke == &zinke2});
-      //   //map.set(ObjString::from_buffer("altarage".as_bytes()),expected_value);
-      //   map.set(zinke,expected_value.clone());
-      //
-      //   println!("{:?}",&map);
-      //
-      //   // let result = map.get(&ObjString::from_buffer("altarage".as_bytes()));
-      //   // assert_eq!(result, Some(&expected_value));
-      //
-      //   let res = map.remove(&zinke2);
-      //   println!("result is {}",res);
-      //
-      //   println!("{:?}",&map);
-      //   map.set(ObjString::from_buffer("0".as_bytes()),Value::bool_value(true));
-      //
-      //   println!("{:?}",&map);
+        //
+        //   // these two collide
+        //   map.set(ObjString::from_buffer("costarring".as_bytes()),Value::bool_value(true));
+        // //  map.set(ObjString::from_buffer("liquid".as_bytes()),Value::bool_value(true));
+        //
+        //   // these collide
+        //   map.set(ObjString::from_buffer("declinate".as_bytes()),Value::bool_value(true));
+        //   map.set(ObjString::from_buffer("macallums".as_bytes()),Value::bool_value(true));
+        //
+        //
+        //   let expected_value = Value::number_value(700f64);
+        //   let zinke = ObjString::from_buffer("zinke".as_bytes());
+        //   let zinke2 = zinke.clone();
+        //
+        //   println!("is equal : {}", {&zinke == &zinke2});
+        //   //map.set(ObjString::from_buffer("altarage".as_bytes()),expected_value);
+        //   map.set(zinke,expected_value.clone());
+        //
+        //   println!("{:?}",&map);
+        //
+        //   // let result = map.get(&ObjString::from_buffer("altarage".as_bytes()));
+        //   // assert_eq!(result, Some(&expected_value));
+        //
+        //   let res = map.remove(&zinke2);
+        //   println!("result is {}",res);
+        //
+        //   println!("{:?}",&map);
+        //   map.set(ObjString::from_buffer("0".as_bytes()),Value::bool_value(true));
+        //
+        //   println!("{:?}",&map);
 
-        map.set(ObjString::from_buffer("4".as_bytes()),Value::number_value(4_f64));
-        map.set(ObjString::from_buffer("15".as_bytes()),Value::number_value(15_f64));
-        map.set(ObjString::from_buffer("24".as_bytes()),Value::number_value(24_f64));
-        println!("{:?}",&map);
+        map.set(
+            ObjString::from_buffer("4".as_bytes()),
+            Value::numberValue(4_f64),
+        );
+        map.set(
+            ObjString::from_buffer("15".as_bytes()),
+            Value::numberValue(15_f64),
+        );
+        map.set(
+            ObjString::from_buffer("24".as_bytes()),
+            Value::numberValue(24_f64),
+        );
+        println!("{:?}", &map);
 
         map.remove(&ObjString::from_buffer("15".as_bytes()));
-        println!("{:?}",&map);
+        println!("{:?}", &map);
 
         let result = map.get(&ObjString::from_buffer("24".as_bytes()));
 
-        assert_eq!(result, Some(&Value::number_value(24_f64)));
-        println!("{:?}",result);
+        assert_eq!(result, Some(&Value::numberValue(24_f64)));
+        println!("{:?}", result);
     }
 }

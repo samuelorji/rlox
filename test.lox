@@ -1,16 +1,13 @@
-class Base {
-  init(a) {
-    this.a = a;
-  }
+class Foo {
+  methodOnFoo() { print "foo"; }
+  override() { print "foo"; }
 }
 
-class Derived < Base {
-  init(a, b) {
-    super.init(a);
-    this.b = b;
-  }
+class Bar < Foo {
+  methodOnBar() { print "bar"; }
+  override() { print "bar"; }
 }
-
-var derived = Derived("a", "b");
-print derived.a; // expect: a
-print derived.b; // expect: b
+var bar = Bar();
+bar.methodOnFoo(); // expect: foo
+bar.methodOnBar(); // expect: bar
+bar.override(); // expect: bar
